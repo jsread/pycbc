@@ -1444,6 +1444,8 @@ def create_layers_from_config(config_file, cube_type='single'):
         list is the same as their level numbers.
     """
     # load the layers
+    if not os.path.exists(config_file):
+        raise ValueError('config file %s does not exist' %(config_file))
     cp = ConfigParser.ConfigParser()
     cp.read(config_file)
 

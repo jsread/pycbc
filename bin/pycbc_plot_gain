@@ -47,19 +47,20 @@ def print_command_line(args):
 
 
 parser = OptionParser()
-parser.add_option('-c', '--test-cache-file', metavar="TESTFILE.CACHE[:TESTLABEL]", help='Required. Cache file containing test result databases. Can also specify a label for the test results; if none provided "test" will be used.')
-parser.add_option('', '--reference-cache-file',  metavar="REFFILE.CACHE[:REFLABEL]", help='Required if reference-stat is not "optimal". Cache file containing reference result databases. Can also specify a label for the reference results; if none provided "reference" will be used.')
+parser.add_option('', '--test-cache-file', metavar="TESTFILE.CACHE:TYPE[:TESTLABEL]", help='Required. Cache file containing test result files, and their type. The type is the workflow from which the results came. Current type options are %s. All the files in the cache file must come from the same type of workflow. You can also specify a label for the test results; if none provided "test" will be used. The label is in latex math mode; if you want just plain text, enclose in a \mathrm{...}. For example, if a cache file called results.cache contained one or more sqlite databases that were created by a pycbc workflow, and you wanted to label this as "pycbc", specify: "results.cache:pycbc_sqlite:\mathrm{pycbc}".')
+parser.add_option('', '--reference-cache-file',  metavar="REFFILE.CACHE:TYPE[:REFLABEL]", help='Required if reference-stat is not "optimal". Cache file containing reference result databases, and their type. You can also specify a label for the reference results; if none provided "reference" will be used. See test-cache-file for more details.')
+parser.add_option('-m', '--map-label', help='Required if either test or reference results type is pycbc_sqlite. The map label to use when getting found injections.')
 parser.add_option('-l', '--layer-config-file', help='Required. A config file containing the layer parameters to use.') 
 parser.add_option('', '--reference-threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies for the reference run.')
 parser.add_option('', '--test-threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies for the test run.')
-parser.add_option('-t', '--test-stat', metavar='stat[:stat_label]', default=r'new_snr:$\hat{\rho}$:max', help='The ranking stat to use for computing efficiency of the test results. Can also specify a stat label for plotting (latex math should be enclosed in $ signs).')
+parser.add_option('-t', '--test-stat', metavar='stat[:stat_label]', help='The ranking stat to use for computing efficiency of the test results. Can also specify a stat label for plotting (latex math should be enclosed in $ signs).')
 parser.add_option('', '--reference-stat', metavar='optimal|stat[:stat_label]', help='Required. Must be either "optimal", or the ranking stat to use for computing efficiency. If "optimal," the results in the test cache file will be compared to what the SNR of each injection would be in Gaussian noise. This is the overlap of each injection with itself ("sigma") divided by 1Mpc. If not "optimal", a reference-cache file must be specified. A stat label for plotting can also be provided if not "optimal."')
-parser.add_option('', '--test-rank-by', default='max', help='Options are "max" or "min". If max (min) an injection in the test results will be considered found if its ranking stat is >= (<) the threshold. Default is max.')
-parser.add_option('', '--reference-rank-by', default='max', help='Same as test-rank-by, but for the reference results. Ignored if "reference-stat is "optimal". Default is max.')
+parser.add_option('', '--test-rank-by', metavar='max|min', help='Options are "max" or "min". If max (min) an injection in the test results will be considered found if its ranking stat is >= (<) the threshold.')
+parser.add_option('', '--reference-rank-by', metavar='max|min', help='Same as test-rank-by, but for the reference results. Ignored if "reference-stat is "optimal".')
 parser.add_option('', '--test-stat-range', metavar='MIN_STAT,MAX_STAT', help='Required. Stat range to use when creating volume vs. stat plots for the test results. Must specify both a minimum and a maximum.')
 parser.add_option('', '--reference-stat-range', metavar='MIN_STAT,MAX_STAT', help='Required. Stat range to use when creating volume vs. stat plots for the reference results. Must specify both a minimum and a maximum. This must be provided even if reference-stat is "optimal."')
 parser.add_option('', '--log-stat', action='store_true', default=False, help='Make the x-axis of the volume vs ranking-stat plots log10. This will make both the test and reference stats log10.')
-parser.add_option('-N', '--min-ninj', type='int', default=2, help='Minimum number of injections that must exist in a block in in order to calculate volume. If a block has less then this, it will be skipped. Default is 2.')
+parser.add_option('-N', '--min-ninj', type='int', default=10, help='Minimum number of injections that must exist in a block in in order to calculate volume. If a block has less then this, it will be skipped. Default is 10.')
 parser.add_option('', '--print-relative-error', action='store_true', default=False, help='Turn on to print relative errors instead of absolute errors.')
 parser.add_option('', '--use-distance-bins', action='store_true', default=False, help="If turned on, will use distance bins to compute sensitive volumes, rather than the standard Monte Carlo method of using the average of the integrand. Generally, this will yield larger variance, so turn this on with caution.")
 parser.add_option('-A', '--astrophysical-prior', metavar='AST_DISTR.cfg', help='Use the astrophysical prior provided in the given config file. Default is to use whatever was used in the injection set.')
@@ -83,11 +84,44 @@ if opts.user_tag is not None:
     tag = '_%s' % opts.user_tag
 else:
     tag = ''
+
+# parse test cache file option
 if not opts.test_cache_file:
     raise ValueError('test-cache-file required')
-if opts.reference_cache_file is None and opts.reference_stat != 'optimal':
-    raise ValueError('referece-cache-file must be provided if reference-stat '+
-        'is not "optimal"')
+cache_info = opts.test_cache_file.split(':')
+if len(cache_info) == 2:
+    test_cache, test_results_type = cache_info
+    test_label = r'\mathrm{test}'
+elif len(cache_info) == 3:
+    test_cache, test_results_type, test_label = cache_info
+else:
+    raise ValueError("test-cache-file not formatted correctly; see help")
+if test_results_type not in plot_utils.known_result_types:
+    raise ValueError("unrecognized result file type %s; see --test-cache-file help" %(
+        test_results_type))
+if test_results_type == 'pycbc_sqlite' and opts.map_label is None:
+    raise ValueError("test results type is pycbc_sqlite, but no --map-label specified")
+
+# parse reference cache file option
+if opts.reference_stat != 'optimal':
+    if opts.reference_cache_file is None:
+        raise ValueError('reference-cache-file must be provided if reference-stat '+
+            'is not "optimal"')
+    cache_info = opts.reference_cache_file.split(':')
+    if len(cache_info) == 2:
+        ref_cache, ref_results_type = cache_info
+        ref_label = r'\mathrm{reference}'
+    elif len(cache_info) == 3:
+        ref_cache, ref_results_type, ref_label = cache_info
+    else:
+        raise ValueError("reference-cache-file not formatted correctly; see help")
+    if ref_results_type not in plot_utils.known_result_types:
+        raise ValueError("unrecognized result file type %s; "  %(
+            ref_results_type) + "see --reference-cache-file help")
+    if ref_results_type == 'pycbc_sqlite' and opts.map_label is None:
+        raise ValueError("reference results type is pycbc_sqlite, but no --map-label " +
+            "specified")
+
 if not opts.output_dir:
     raise ValueError('output-dir required')
 
@@ -103,6 +137,8 @@ efficiency.PHyperCube.use_distance_bins = opts.use_distance_bins
 test_stat, test_stat_label = get_stat_info(opts.test_stat)
 if test_stat is None:
     raise ValueError("test-stat not formatted correctly; see help")
+if not (opts.test_rank_by == 'max' or opts.test_rank_by == 'min'):
+    raise ValueError('test-rank-by must be set to either "max" or "min"')
 test_rank_by = opts.test_rank_by
 
 if opts.reference_stat == 'optimal':
@@ -114,6 +150,8 @@ else:
     ref_stat, ref_stat_label = get_stat_info(opts.reference_stat)
     if ref_stat is None:
         raise ValueError("reference-stat not formatted correctly; see help")
+    if not (opts.reference_rank_by == 'max' or opts.reference_rank_by == 'min'):
+        raise ValueError('reference-rank-by must be set to either "max" or "min"')
     ref_rank_by = opts.reference_rank_by
 
 if opts.test_stat_range is None:
@@ -222,17 +260,13 @@ for thiscut in opts.apply_cut:
     apply_cut[arg] = map(float, vals.split(','))
 
 print "getting test results"
-cache_info = opts.test_cache_file.split(':')
-if len(cache_info) == 1:
-    test_cache = cache_info[0]
-    test_label = r'\mathrm{test}'
-elif len(cache_info) == 2:
-    test_cache, test_label = cache_info
-else:
-    raise ValueError("test-cache-file not formatted correctly; see help")
 filenames = plot_utils.parse_results_cache(test_cache)
-test_results, _ = plot_utils.get_injection_results(filenames,
-    load_inj_distribution=True, verbose=True)
+if test_results_type == "overlaps":
+    test_results, _ = plot_utils.get_injection_results(filenames,
+        load_inj_distribution=True, verbose=True)
+else:
+    test_results, _ = plot_utils.get_pycbc_sqlite_injection_results(filenames,
+        opts.map_label)
 
 if apply_cut:
     print "applying cuts"
@@ -240,22 +274,20 @@ if apply_cut:
 
 if opts.reference_stat != 'optimal':
     print "getting reference results"
-    cache_info = opts.reference_cache_file.split(':')
-    if len(cache_info) == 1:
-        ref_cache = cache_info[0]
-        ref_label = r'\mathrm{reference}'
-    elif len(cache_info) == 2:
-        ref_cache, ref_label = cache_info
-    else:
-        raise ValueError("reference-cache-file not formatted correctly; " +\
-            "see help")
     filenames = plot_utils.parse_results_cache(ref_cache)
-    ref_results, _ = plot_utils.get_injection_results(filenames,
-        load_inj_distribution=True, verbose=True)
+    if ref_results_type == "overlaps":
+        ref_results, _ = plot_utils.get_injection_results(filenames,
+            load_inj_distribution=True, verbose=True)
+    else:
+        ref_results, _ = plot_utils.get_pycbc_sqlite_injection_results(filenames,
+        opts.map_label)
 else:
     # just set the reference data to be the same as the test
     ref_results = test_results
     ref_label = r'\mathrm{optimal}'
+
+print "Number of test results: %i" % len(test_results)
+print "Number of reference results: %i" % len(ref_results)
 
 # set the top level data and ranking parameters
 print "binning data"
@@ -298,9 +330,6 @@ if opts.use_global_norm:
         # also set the total number of injections for computing the variance
         pcube.test_cube.total_nsamples = len(test_results)
         pcube.reference_cube.total_nsamples = len(ref_results)
-
-print "len test:", len(test_results)
-print "len ref:", len(ref_results)
 
 # if min, max gain aren't specified, get the minimum/maximum gains across
 # all of the tiles
