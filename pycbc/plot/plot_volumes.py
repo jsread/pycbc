@@ -451,7 +451,14 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
     plot_ymin, plot_ymax = yvals.min(), yvals.max()
 
     # now create a separate axis that shares the same x-axis
-    ax2 = ax.twiny()
+    # we'll only do this if there is a difference between the two axes
+    use_single_ax = test_min_stat == ref_min_stat and test_max_stat == ref_max_stat and \
+            test_threshold == ref_threshold
+    if use_single_ax:
+        # just use a single axis
+        ax2 = ax
+    else:
+        ax2 = ax.twiny()
     _, yvals, testline = plot_volume_vs_stat_on_axes(ax2,
         phyper_cube.test_cube,
         test_min_stat, test_max_stat, logx=logx, logy=False, nbins=nbins,
@@ -474,17 +481,18 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
             ymax = 1.1*plot_ymax
     # now align the two axes such that the thresholds are equal; we'll do
     # this by adjusting the test xlims
-    test_xmin, test_xmax = ax2.get_xlim()
-    # find the displacement from the test threshold to the reference threshold
-    # in units of the test x-axis
-    # first, we'll get the location of the reference threshold in display units
-    ref_thresh_coords = ax.transData.transform_point([ref_threshold,
-        (ymax-ymin)/2.]) 
-    # now convert that to test's x-axis units
-    ref_thresh_loc = ax2.transData.inverted().transform_point(
-        ref_thresh_coords)
-    dx = ref_thresh_loc[0] - test_threshold
-    ax2.set_xlim(test_xmin-dx, test_xmax-dx)
+    if not use_single_ax:
+        test_xmin, test_xmax = ax2.get_xlim()
+        # find the displacement from the test threshold to the reference threshold
+        # in units of the test x-axis
+        # first, we'll get the location of the reference threshold in display units
+        ref_thresh_coords = ax.transData.transform_point([ref_threshold,
+            (ymax-ymin)/2.]) 
+        # now convert that to test's x-axis units
+        ref_thresh_loc = ax2.transData.inverted().transform_point(
+            ref_thresh_coords)
+        dx = ref_thresh_loc[0] - test_threshold
+        ax2.set_xlim(test_xmin-dx, test_xmax-dx)
 
     # now plot the thershold line
     ax.plot([ref_threshold, ref_threshold], [ymin, ymax],
