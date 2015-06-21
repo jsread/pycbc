@@ -325,6 +325,7 @@ setup (
                'bin/pycbc_plot_snrchi',
                'bin/pycbc_generate_match_win',
                'bin/pycbc_plot_injrec',
+               'bin/pycbc_plot_sensitivity',
                'bin/pycbc_plot_volumes',
                'bin/pycbc_plot_gain',
                'bin/pycbc_optimal_snr',

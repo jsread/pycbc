@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 import sys
+import lal
 
 columnwidth = 3.4
 width = 2*columnwidth
@@ -326,9 +327,11 @@ def _adjust_lims_for_subtiles(master_ax, phyper_cubes, xarg, yarg, logx=False,
 
 def plot_volume_vs_stat_on_axes(ax, phyper_cube, min_stat, max_stat,
         logx=False, logy=False, nbins=20, threshold=None, color='b',
-        xmin=None, xmax=None, ymin=None, ymax=None):
+        livetime=None, xmin=None, xmax=None, ymin=None, ymax=None):
     """
     Creats a plot of sensitive volume versus ranking stat on the given axes.
+    If a livetime is provided (in s), VT is plotted (with T in Myr) instead
+    of just V.
     """
     if phyper_cube.nsamples < 2:
         return plot_utils.empty_plot(ax), None, None
@@ -348,6 +351,11 @@ def plot_volume_vs_stat_on_axes(ax, phyper_cube, min_stat, max_stat,
         errs_low = volumes[:,2]
     else:
         errs_low = errs_high
+    if livetime is not None:
+        livetime = 1e-6 * livetime / lal.YRJUL_SI
+        Vs *= livetime
+        errs_low = errs_low * livetime
+        errs_high = errs_high * livetime
     vline, = ax.plot(thresholds, Vs, color=color, lw=2, zorder=2)
     # we'll plot the error region a filled space; fill works counter-clockwise
     # around the polygon formed by the error region
@@ -421,6 +429,46 @@ def plot_volume_vs_stat(phyper_cube, min_stat, max_stat, stat_label,
 
     return fig
 
+def plot_multivolumes_vs_stat(phyper_cubes, min_stat, max_stat, stat_label,
+        colors, labels, livetimes=[], logx=False, logy=False, nbins=20,
+        threshold=None,
+        xmin=None, xmax=None, ymin=None, ymax=None):
+    """
+    Plots the volume computed from each phyper cube in the given list of
+    phyper cubes as a separate line on the axis.
+    """
+    fig = plot_utils.figure(figsize=(5,4))
+    fig.subplots_adjust(bottom=0.15)
+    ax = fig.add_subplot(111)
+
+    # add each plot to the axes
+    lines = []
+    for ii,(pcube,color) in enumerate(zip(phyper_cubes, colors)):
+        # if a livetime is specified, get it
+        if livetimes != []:
+            livetime = livetimes[ii]
+        else:
+            livetime = None
+        if color == '' or color is None:
+            if len(phyper_cubes) == 1:
+                clrval = 0. 
+            else:
+                clrval = ii/float(len(phyper_cubes)-1)
+            color = pyplot.cm.jet_r(clrval)
+        _, _, line = plot_volume_vs_stat_on_axes(ax, pcube, min_stat, max_stat,
+            logx=logx, logy=logy, nbins=nbins, threshold=threshold,
+            color=color, livetime=livetime, xmin=xmin, xmax=xmax, ymin=ymin,
+            ymax=ymax)
+        lines.append(line)
+    # label
+    ax.legend(lines, labels)
+    ax.set_xlabel(stat_label)
+    if livetimes != []:
+        ax.set_ylabel('$VT\,(\mathrm{Mpc}^3\,\mathrm{Myr}^{-1})$')
+    else:
+        ax.set_ylabel('$\mathcal{V}\,(\mathrm{Mpc}^3)$')
+
+    return fig
 
 def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
         ref_min_stat, ref_max_stat, test_threshold, ref_threshold,
