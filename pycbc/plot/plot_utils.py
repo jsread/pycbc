@@ -12,6 +12,7 @@ from matplotlib import pyplot
 
 from pycbc import distributions
 
+from glue import segments
 from pylal import printutils
 
 def drop_trailing_zeros(num):
@@ -1082,6 +1083,69 @@ def get_pycbc_sqlite_injection_results(filenames, map_label,
     id_map = dict([[x.simulation_id, ii] for ii,x in enumerate(results)])
     return results, id_map
 
+def get_livetime_from_pycbc_sqlite(filenames):
+    """
+    Gets the total live time from a list of sqlite databases produced by the
+    pycbc workflow. Live times are only added if the experiments in multiple
+    filenames do not have overlapping gps end times.
+    """
+    sqlquery = """
+        SELECT
+            exp.experiment_id, exp.instruments,
+            exp.gps_start_time, exp.gps_end_time,
+            exsumm.veto_def_name, exsumm.datatype, exsumm.duration
+        FROM
+            experiment as exp
+        JOIN
+            experiment_summary as exsumm
+        ON
+            exp.experiment_id == exsumm.experiment_id
+        """
+    livetimes = {}
+    for filename in filenames:
+        connection = sqlite3.connect(filename)
+        thisdict = {}
+        for eid, instruments, gps_start, gps_end, vetoes, datatype, duration \
+                in connection.cursor().execute(sqlquery):
+            exkey = (eid, instruments, vetoes, datatype)
+            this_seg = segments.segment(gps_start, gps_end)
+            thisdict.setdefault(exkey, [this_seg, None])
+            # for the first one, always just add the duration
+            if thisdict[exkey][1] is None:
+                thisdict[exkey][1] = duration 
+            # if datatype is slide add the times
+            elif datatype == "slide":
+                thisdict[exkey][1] += duration
+            # otherwise, check that the livetime is the same 
+            elif duration != thisdict[exkey][1]:
+                raise ValueError("unequal durations for " + exkey + \
+                    "in file %s" %(filename))
+        connection.close()
+        # add to the master list of livetimes
+        for ((_, instruments, vetoes, datatype), [this_seg, dur]) in \
+                thisdict.items():
+            # we'll make a dict of dict with datatype being the primary key
+            livetimes.setdefault(datatype, {})
+            exkey = (instruments, vetoes)
+            try:
+                seg_list, _ = livetimes[datatype][exkey]
+            except KeyError:
+                # doesn't exist, create
+                seg_list = segments.segmentlist([])
+                livetimes[datatype][exkey] = [seg_list, 0]
+                
+            # check that this_seg does not intersect with the segments
+            # from the other files
+            if seg_list.intersects_segment(this_seg):
+                raise ValueError("Experiment (%s, %s, %s) " % exkey + \
+                    "has overlapping gps times in multiple files")
+
+            # add the duration and update the segment list
+            seg_list.append(this_seg)
+            seg_list.coalesce()
+            livetimes[datatype][exkey][1] += dur
+
+    return livetimes
 
 
 def get_templates(filename, old_format=False):
