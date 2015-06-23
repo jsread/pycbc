@@ -41,7 +41,8 @@ parser.add_option('-R', '--stat-range', metavar='MIN_STAT,MAX_STAT', help='Stat 
 parser.add_option('-T', '--include-livetime', action='store_true', default=False, help='Plot VT instead of just V.')
 parser.add_option('-A', '--astrophysical-prior', metavar='AST_DISTR.cfg', help='Use the astrophysical prior provided in the given config file. Default is to use whatever was used in the injection set.')
 parser.add_option('-P', '--apply-cut', action = 'append', default = [], metavar = 'arg:min,max', help='Only include injections that have the given argument in the given range. If specified multiple times, only injections passing all specified cuts will be plotted.')
-parser.add_option('-L', '--logx', action='store_true', default=False, help='Make the x-axis log.')
+parser.add_option('-X', '--logx', action='store_true', default=False, help='Make the x-axis log.')
+parser.add_option('-Y', '--logy', action='store_true', default=False, help='Make the y-axis log.')
 parser.add_option('-U', '--y-min', type='float', help='min y for plot')
 parser.add_option('-V', '--y-max', type='float', help='max y for plot')
 parser.add_option('-N', '--npoints', type='int', default=20, help='Number of points at which to calculate the sensitive volume. The points will be distributed between the min and max stat values. Default is 20.')
@@ -170,7 +171,8 @@ for ii,cache_file_arg in enumerate(cache_files):
         livetimes.append(livetime)
 
 fig = plot_volumes.plot_multivolumes_vs_stat(pcubes, min_stat, max_stat,
-    stat_label, colors, labels, livetimes=livetimes, logx=opts.logx, logy=True,
+    stat_label, colors, labels, livetimes=livetimes,
+    logx=opts.logx, logy=opts.logy,
     nbins=opts.npoints, threshold=None, xmin=min_stat, xmax=max_stat,
     ymin=opts.y_min, ymax=opts.y_max)
 
