@@ -522,7 +522,7 @@ def insert_mass_range_option_group(parser,nonSpin=False):
                        "--ns-bh-boundary-mass will be ignored.")
     return massOpts
 
-def verify_mass_range_options(opts, parser, nonSpin=False, log_lvl='%(asctime)s %(message)s', log_frmt='%(asctime)s %(message)s'):
+def verify_mass_range_options(opts, parser, nonSpin=False):
     """
     Parses the metric calculation options given and verifies that they are
     correct.
@@ -568,7 +568,6 @@ def verify_mass_range_options(opts, parser, nonSpin=False, log_lvl='%(asctime)s 
     # Warn the user that his/her setup is such that EM dim NS-BH binaries
     # will not be targeted by the template bank that is being built.  Also
     # inform him/her about the caveats involved in this. 
-    logging.basicConfig(format=log_frmt, level=log_lvl)
     if not opts.remnant_mass_threshold is None:
         logging.info("""You have asked to exclude EM dim NS-BH systems from the
                         target parameter space. The script will assume that m1 is

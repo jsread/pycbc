@@ -160,7 +160,7 @@ if orig_opts.write_metric:
 
 pycbc.tmpltbank.verify_metric_calculation_options(opts, parser)
 metricParams=pycbc.tmpltbank.metricParameters.from_argparse(opts)
-pycbc.tmpltbank.verify_mass_range_options(opts, parser, log_lvl=log_level, log_frmt=log_format)
+pycbc.tmpltbank.verify_mass_range_options(opts, parser)
 massRangeParams=pycbc.tmpltbank.massRangeParameters.from_argparse(opts)
 pycbc.psd.verify_psd_options(opts, parser)
 if opts.psd_estimation:

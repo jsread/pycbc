@@ -116,7 +116,7 @@ if not opts.vary_fupper:
 opts.max_mismatch = 1 - opts.min_match
 tmpltbank.verify_metric_calculation_options(opts, parser)
 metricParams=tmpltbank.metricParameters.from_argparse(opts)
-tmpltbank.verify_mass_range_options(opts, parser, log_lvl=log_level, log_frmt=log_format)
+tmpltbank.verify_mass_range_options(opts, parser)
 massRangeParams=tmpltbank.massRangeParameters.from_argparse(opts)
 pycbc.psd.verify_psd_options(opts, parser)
 if opts.psd_estimation:
