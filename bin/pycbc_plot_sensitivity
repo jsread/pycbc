@@ -170,6 +170,7 @@ for ii,cache_file_arg in enumerate(cache_files):
         livetime = sum([dur for _,dur in livetime.values()])
         livetimes.append(livetime)
 
+print "plotting"
 fig = plot_volumes.plot_multivolumes_vs_stat(pcubes, min_stat, max_stat,
     stat_label, colors, labels, livetimes=livetimes,
     logx=opts.logx, logy=opts.logy,

@@ -464,7 +464,7 @@ def plot_multivolumes_vs_stat(phyper_cubes, min_stat, max_stat, stat_label,
     ax.legend(lines, labels)
     ax.set_xlabel(stat_label)
     if livetimes != []:
-        ax.set_ylabel('$VT\,(\mathrm{Mpc}^3\,\mathrm{Myr}^{-1})$')
+        ax.set_ylabel('$VT\,(\mathrm{Mpc}^3\,\mathrm{Myr})$')
     else:
         ax.set_ylabel('$\mathcal{V}\,(\mathrm{Mpc}^3)$')
 
