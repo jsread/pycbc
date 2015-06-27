@@ -162,8 +162,12 @@ class UniformComponent(CBCDistribution):
             min_mtotal = float(min_mtotal)
         if max_mtotal is not None:
             max_mtotal = float(max_mtotal)
-        bounds = {'mass1': (min_mass1, max_mass1),
-            'mass2': (min_mass2, max_mass2)}
+        if max_mass2 > max_mass1:
+            bounds = {'mass2': (min_mass1, max_mass1),
+                'mass1': (min_mass2, max_mass2)}
+        else:
+            bounds = {'mass1': (min_mass1, max_mass1),
+                'mass2': (min_mass2, max_mass2)}
         if max_mtotal is not None or min_mtotal is not None:
             if min_mtotal is None:
                 min_mtotal = min_mass1+min_mass2
