@@ -98,6 +98,7 @@ class PHyperCube:
         self.total_nsamples = None
         self._cached_volumes = {}
         self._astro_prior = None
+        self._cached_astro_weights = {}
         # for grouping together phyper cubes
         self.parent = None
         self.children = []
@@ -191,9 +192,12 @@ class PHyperCube:
     def set_data(self, data):
         """
         Given some data, extracts the points that are relevant to this cube.
+        Also clears cached data (volumes, weights).
         """
         self.data = plot_utils.slice_results(data, self.bounds)
         self._nsamples = len(self.data)
+        self._cached_volumes.clear()
+        self._cached_astro_weights.clear()
     
     @property
     def nsamples(self):
@@ -304,25 +308,32 @@ class PHyperCube:
         integrand = numpy.array([x.injection.min_vol + x.injection.vol_weight*\
             float(_isfound(x, ranking_stat, compare_operator, threshold)) \
             for x in self.data if x.injection.vol_weight is not None])
-        if astro_prior is not None:
-            # apply the appropriate astrophysical prior
-            # FIXME: this currently only works on masses
-            weights = numpy.array([distributions.convert_distribution(
-                x, x.injection.mass_distr, astro_prior) for x in self.data
-                if x.injection.vol_weight is not None])
-        else:
-            weights = numpy.ones(self.nsamples, dtype=float)
-        # apply the appropriate norm to the weights
+        # apply the appropriate astrophysical prior
+        # FIXME: this currently only works on masses
+        try:
+            weights = self._cached_astro_weights[astro_prior, self.global_norm]
+        except KeyError:
+            if astro_prior is not None:
+                weights = numpy.array([distributions.convert_distribution(
+                    x, x.injection.mass_distr, astro_prior) for x in self.data
+                    if x.injection.vol_weight is not None])
+            else:
+                weights = numpy.ones(self.nsamples, dtype=float)
+            # apply the appropriate norm to the weights
+            if self.global_norm is not None:
+                weights /= self.global_norm
+            else:
+                # otherwise, we're assuming a universe in which signals only exist
+                # in this cube
+                weights /= weights.sum()
+            # save to cache
+            self._cached_astro_weights[astro_prior, self.global_norm] = weights
+        # if using a global norm, we'll set the number of samples to be the
+        # total number of injections across the entire space, so that
+        # volumes add to the total volume
         if self.global_norm is not None:
-            weights /= self.global_norm
-            # if using a global norm, we'll set the number of samples to be the
-            # total number of injections across the entire space, so that
-            # volumes add to the total volume
             Nsamples = self.total_nsamples
         else:
-            # otherwise, we're assuming a universe in which signals only exist
-            # in this cube
-            weights /= weights.sum()
             Nsamples = self.nsamples
         mean = (weights * integrand).sum()
         # calucate a weighted variance
