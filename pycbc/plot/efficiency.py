@@ -37,6 +37,7 @@ from glue import segments
 
 from pycbc import distributions
 from pycbc.plot import plot_utils
+from pycbc.plot import data_utils
 
 from scipy import special
 def beta_weight(result, alpha, beta):
@@ -194,7 +195,7 @@ class PHyperCube:
         Given some data, extracts the points that are relevant to this cube.
         Also clears cached data (volumes, weights).
         """
-        self.data = plot_utils.slice_results(data, self.bounds)
+        self.data = data_utils.slice_results(data, self.bounds)
         self._nsamples = len(self.data)
         self._cached_volumes.clear()
         self._cached_astro_weights.clear()
@@ -669,10 +670,10 @@ def _isfound(result, ranking_stat, compare_operator, threshold):
 
     Parameters
     ----------
-    result: plot_utils.Result
+    result: plot.Result
         Result class instance representing an injection.
     ranking_stat: str
-        What to use for the ranking. Must be a parameter of plot_utils.Result.
+        What to use for the ranking. Must be a parameter of plot.Result.
     compare_operator: operator function
         The comparison operator to use. For example, if this is operator.ge,
         then result's ranking_stat must be >= threshold to be found.
@@ -683,7 +684,7 @@ def _isfound(result, ranking_stat, compare_operator, threshold):
     -------
     _isfound: bool
     """
-    return compare_operator(plot_utils.get_arg(result, ranking_stat),
+    return compare_operator(data_utils.get_arg(result, ranking_stat),
         threshold)
 
 
