@@ -476,7 +476,7 @@ for fnum, infile in enumerate(filenames):
             # that the injection starts 1/4 of the way into the segment. This
             # means the injection will end ~3/4 into the segment.
             segment_start = inj.detector_end_time(ifo) - inj.duration \
-                - segment_length/4.
+                - seg_length/4.
 
             #
             #   If varying N, figure out the sample rate to use,
