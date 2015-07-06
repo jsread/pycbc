@@ -143,7 +143,9 @@ for ii,cache_file_arg in enumerate(cache_files):
             verbose=True)
     if apply_cut:
         print "  applying cuts"
+        print "  number of results before: %i" %(len(results))
         results = plot.slice_results(results, apply_cut)
+        print "  number of results after: %i" %(len(results))
 
     # get the desired approximant
     if approx is not None:
@@ -183,7 +185,6 @@ for ii,cache_file_arg in enumerate(cache_files):
             livetime = plot.hdfcoinc.get_livetime(statmap_files) 
         print "livetime (s): ", livetime
         livetimes.append(livetime)
-
 print "plotting"
 fig = plot_volumes.plot_multivolumes_vs_stat(pcubes, min_stat, max_stat,
     stat_label, colors, labels, livetimes=livetimes,
