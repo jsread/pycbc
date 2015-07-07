@@ -1140,16 +1140,43 @@ class Layer:
         # plot options
         self.plot_x_min = None
         self.plot_x_max = None
+        self.plot_log_x = False
         self.plot_y_min = None
         self.plot_y_max = None
+        self.plot_log_y = False
         # attributes for organizing html pages, plots
         self.root_dir = None
         self.web_dir = None
         self.images_dir = None
 
+    def set_bins(self, x_or_y, lower_bounds, upper_bounds, distr):
+        """
+        Sets the bins in x or y.
+
+        Parameters
+        ----------
+        x_or_y: str {'x'|'y'}
+            Which axis to set the bins for.
+        lower_bounds: numpy.array
+            List of lower bounds of bin boundaries.
+        upper_bounds: numpy.array
+            List of upper bounds of bin boundaries. Length must be the same as
+            lower_bounds.
+        distr: str {'linear'|'log10'|'custom'}
+            The distribution used to create the bins.
+        """
+        if len(lower_bounds) != len(upper_bounds):
+            raise ValueError("length of bounds must match")
+        # the actual bins will be a segments list
+        boundslist = segments.segmentlist(map(segments.segment,
+            zip(lower_bounds, upper_bounds)))
+        # set
+        setattr(self, '_%s_bins' % x_or_y, boundslist)
+        setattr(self, '_%s_distr' % x_or_y, distr)
+
     def create_bins(self, x_or_y, minval, maxval, num, distr):
         """
-        Creates the bins to use.
+        Creates and sets the bins.
 
         Parameters
         ----------
@@ -1172,14 +1199,9 @@ class Layer:
         else:
             raise ValueError("unrecognized distribution %s; " %(distr) +\
                 "options are 'linear' or 'log10'")
-        # the actual bins will be a segments list
-        boundslist = segments.segmentlist([])
-        for ii,lower in enumerate(bins[:-1]):
-            upper = bins[ii+1]
-            boundslist.append(segments.segment(lower, upper))
-        # set
-        setattr(self, '_%s_bins' % x_or_y, boundslist)
-        setattr(self, '_%s_distr' % x_or_y, distr)
+        lower_bounds = bins[:-1]
+        upper_bounds = bins[1:]
+        self.set_bins(x_or_y, lower_bounds, upper_bounds, distr)
 
     @property
     def x_lims(self):
@@ -1267,8 +1289,11 @@ class Layer:
         If this level is > 0, super_layer must be set.
         """
         # first, tile up this layer
-        this_layer_tiles = [(xbin, ybin) for ybin in self._y_bins \
-            for xbin in self._x_bins]
+        if self.x_distr == 'custom' or self.y_distr == 'custom':
+            this_layer_tiles = zip(self._x_bins, self._y_bins)
+        else:
+            this_layer_tiles = [(xbin, ybin) for ybin in self._y_bins \
+                for xbin in self._x_bins]
         # now, if there is a super layer, create a child phyper cube for every
         # tile for every parent phyper cube in super layer
         if self.level > 0:
@@ -1404,6 +1429,41 @@ class Layer:
             rank_by, stat_label) for child in self.all_children]
 
 
+def parse_custom_bins(bins_argument):
+    """
+    Parses a string listing custom bins to use.
+    
+    Parameters
+    ----------
+    bins_argument: str
+        String giving the custom bins. Format must be:
+        {xmin1, xmax1, ymin1, ymax1};{xmin2, xmax2, ymin2, ymax2};{etc.}
+        (white space doesn't matter).
+
+    Returns
+    -------
+    x_lower_bounds: numpy array
+        Array of the x lower bounds.
+    x_upper_bounds: numpy array
+        Array of the x upper bounds.
+    y_lower_bounds: numpy array
+        Array of the y lower bounds.
+    y_upper_bounds: numpy array
+        Array of the y upper bounds.
+    """
+    bins = bins_argument.replace('{', '').replace('}', '').split(';')
+    x_lower_bounds = numpy.zeros(len(bins))
+    x_upper_bounds = numpy.zeros(len(bins))
+    y_lower_bounds = numpy.zeros(len(bins))
+    y_upper_bounds = numpy.zeros(len(bins))
+    for ii,thisbin in enumerate(bins):
+        xmin, xmax, ymin, ymax = map(float, thisbin.split(','))
+        x_lower_bounds[ii] = xmin
+        x_upper_bounds[ii] = xmax
+        y_lower_bounds[ii] = ymin
+        y_upper_bounds[ii] = ymax
+    return x_lower_bounds, x_upper_bounds, y_lower_bounds, y_upper_bounds
+
 
 def create_layers_from_config(config_file, cube_type='single'):
     """
@@ -1430,6 +1490,7 @@ def create_layers_from_config(config_file, cube_type='single'):
         x-distr = linear
         plot-x-min = 4.
         plot-x-max = 52.
+        ;plot-log-x =
         ; y parameters
         y-arg = q
         y-label = $q$
@@ -1439,6 +1500,7 @@ def create_layers_from_config(config_file, cube_type='single'):
         y-distr = log10
         plot-y-min = 0.9
         plot-y-max = 20.
+        ;plot-log-y =
 
     Parameters
     ----------
@@ -1472,27 +1534,46 @@ def create_layers_from_config(config_file, cube_type='single'):
         x_label = cp.get(layer_name, 'x-label')
         y_label = cp.get(layer_name, 'y-label')
         this_layer = Layer(level, x_arg, y_arg, x_label, y_label, cube_type)
-        # set x bins
-        x_min = float(cp.get(layer_name, 'x-min'))
-        x_max = float(cp.get(layer_name, 'x-max'))
-        x_nbins = int(cp.get(layer_name, 'x-nbins'))
-        x_distr = cp.get(layer_name, 'x-distr')
-        this_layer.create_bins('x', x_min, x_max, x_nbins, x_distr)
-        # ditto y
-        y_min = float(cp.get(layer_name, 'y-min'))
-        y_max = float(cp.get(layer_name, 'y-max'))
-        y_nbins = int(cp.get(layer_name, 'y-nbins'))
-        y_distr = cp.get(layer_name, 'y-distr')
-        this_layer.create_bins('y', y_min, y_max, y_nbins, y_distr)
+        # if custom bins are specified, set them
+        if cp.has_option(layer_name, 'custom-bins'):
+            # check that there are not distribution options also set
+            if any([cp.has_option(layer_name, opt) for opt in \
+                    ['x-min', 'x-max', 'x-nbins', 'x-distr',
+                     'y-min', 'y-max', 'y-nbins', 'y-distr']]):
+                raise ValueError("config file specifies custom-bins, but " +
+                    "also includes arguments related to creating a " +
+                    "creating a distribution")
+            # parse the bins
+            x_lower_bounds, x_upper_bounds, y_lower_bounds, y_upper_bounds = \
+                parse_custom_bins(cp.get(layer_name, 'custom-bins'))
+            this_layer.set_bins('x', x_lower_bounds, x_upper_bounds, 'custom')
+            this_layer.set_bins('y', y_lower_bounds, y_upper_bounds, 'custom')
+        else:
+            # set x bins
+            x_min = float(cp.get(layer_name, 'x-min'))
+            x_max = float(cp.get(layer_name, 'x-max'))
+            x_nbins = int(cp.get(layer_name, 'x-nbins'))
+            x_distr = cp.get(layer_name, 'x-distr')
+            this_layer.create_bins('x', x_min, x_max, x_nbins, x_distr)
+            # ditto y
+            y_min = float(cp.get(layer_name, 'y-min'))
+            y_max = float(cp.get(layer_name, 'y-max'))
+            y_nbins = int(cp.get(layer_name, 'y-nbins'))
+            y_distr = cp.get(layer_name, 'y-distr')
+            this_layer.create_bins('y', y_min, y_max, y_nbins, y_distr)
         # set plotting options
         if cp.has_option(layer_name, 'plot-x-min'):
             this_layer.plot_x_min = float(cp.get(layer_name, 'plot-x-min'))
         if cp.has_option(layer_name, 'plot-x-max'):
             this_layer.plot_x_max = float(cp.get(layer_name, 'plot-x-max'))
+        if cp.has_option(layer_name, 'plot-log-x'):
+            this_layer.plot_log_x = True
         if cp.has_option(layer_name, 'plot-y-min'):
             this_layer.plot_y_min = float(cp.get(layer_name, 'plot-y-min'))
         if cp.has_option(layer_name, 'plot-y-max'):
             this_layer.plot_y_max = float(cp.get(layer_name, 'plot-y-max'))
+        if cp.has_option(layer_name, 'plot-log-y'):
+            this_layer.plot_log_y = True
         # set super layer and create phyper cubes
         if level > 0:
             this_layer.set_super_layer(layers[level-1])
