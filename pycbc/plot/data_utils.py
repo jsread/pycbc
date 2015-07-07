@@ -371,6 +371,8 @@ def parse_results_cache(cache_file):
         thisfile = line.split('\n')[0]
         if os.path.exists(thisfile):
             filenames.append(thisfile)
+        else:
+            raise ValueError("file %s not found" %(thisfile))
     f.close()
     return filenames
 
