@@ -82,30 +82,55 @@ def _plot_tiles(ax, zvals, plus_errs, minus_errs, phyper_cubes,
     # check what the grayscale is on either end of the color maps; if vmin or
     # vmax is close to black, we'll bump them down/up slightly so as not to
     # blend with the background
-    min_gray = plot_utils.get_color_grayscale(
-        getattr(pyplot.cm, colormap)(0.))
-    new_vmin = vmin
-    # to prevent infinite loops, we'll give up after 100 steps
-    step_count = 0
-    while min_gray < 0.1 and step_count < 100:
-        new_vmin = new_vmin - 0.01*new_vmin 
-        clrfac = (vmin - new_vmin)/(vmax - new_vmin)
+    if False:
+        target_min_gray = 0.05
+        gray_precision = 0.01
+        gray_frac_diff = 0.
         min_gray = plot_utils.get_color_grayscale(
-            getattr(pyplot.cm, colormap)(clrfac))
-        step_count += 1
-    vmin = new_vmin
-    # ditto for vmax
-    min_gray = plot_utils.get_color_grayscale(
-        getattr(pyplot.cm, colormap)(1.))
-    new_vmax = vmax
-    step_count = 0
-    while min_gray < 0.1 and step_count < 100:
-        new_vmax = new_vmax + 0.01*new_vmax 
-        clrfac = (vmax - vmin)/(new_vmax - vmin)
+            getattr(pyplot.cm, colormap)(0.))
+        new_vmin = vmin
+        # to prevent infinite loops, we'll give up after 100 steps
+        step_count = 0
+        while min_gray < target_min_gray and step_count < 100:
+            # if the fractional difference is > 0, means we've gone too far to
+            # white, so step back half
+            if gray_frac_diff > 0:
+                step_size = step_size/2.
+            # otherwise, increase the normalization by 1.5; this has the effect
+            # of sticking the minimum point a quarter of the way into the color
+            # range
+            else:
+                step_size = -abs(vmax - new_vmin)/2. #abs(0.01*new_vmin)
+            new_vmin = new_vmin + step_size 
+            clrfac = (vmin - new_vmin)/(vmax - new_vmin)
+            min_gray = plot_utils.get_color_grayscale(
+                getattr(pyplot.cm, colormap)(clrfac))
+            gray_frac_diff = (min_gray - target_min_gray)/target_min_gray
+            step_count += 1
+        vmin = new_vmin
+        # ditto for vmax
+        gray_frac_diff = 0.
         min_gray = plot_utils.get_color_grayscale(
-            getattr(pyplot.cm, colormap)(clrfac))
-        step_count += 1
-    vmax = new_vmax
+            getattr(pyplot.cm, colormap)(1.))
+        new_vmax = vmax
+        step_count = 0
+        while min_gray < target_min_gray and step_count < 100:
+            # if the fractional difference is > 0, means we've gone too far to
+            # white, so step back half
+            if gray_frac_diff > 0:
+                step_size = -step_size/2.
+            # otherwise, increase the normalization by 1.5; this has the effect
+            # of sticking the minimum point a quarter of the way into the color
+            # range
+            else:
+                step_size = abs(new_vmax - vmin)/2. #abs(0.01*new_vmin)
+            new_vmax = new_vmax + step_size 
+            clrfac = (new_vmax - vmax)/(new_vmax - vmin)
+            min_gray = plot_utils.get_color_grayscale(
+                getattr(pyplot.cm, colormap)(clrfac))
+            gray_frac_diff = (min_gray - target_min_gray)/target_min_gray
+            step_count += 1
+        vmax = new_vmax
     if annotate and (plus_errs is None or minus_errs is None):
         raise ValueError("annotate requires plus_errs and minus_errs")
     # if not annotating, we don't need the errors, so if they were passed as
@@ -154,14 +179,8 @@ def _plot_tiles(ax, zvals, plus_errs, minus_errs, phyper_cubes,
             txt_str = efficiency.format_volume_text(Z, err_plus, err_minus,
                 include_units=False, use_scientific_notation=use_scin,
                 use_relative_err=print_relative_err)
-            if logx:
-                txtx = numpy.log10(10**min(x) + (10**max(x)-10**min(x))/2.)
-            else:
-                txtx = min(x) + (max(x) - min(x))/2.
-            if logy:
-                txty = numpy.log10(10**min(y) + (10**max(y)-10**min(y))/2.)
-            else:
-                txty = min(y) + (max(y) - min(y))/2.
+            txtx = min(x) + (max(x) - min(x))/2.
+            txty = min(y) + (max(y) - min(y))/2.
 
         # add a border if the grayscale is close to black
         #if clr_grayscale < 0.1:
@@ -410,7 +429,7 @@ def plot_volume_vs_stat_on_axes(ax, phyper_cube, min_stat, max_stat,
 
 def plot_volume_vs_stat(phyper_cube, min_stat, max_stat, stat_label,
         logx=False, logy=False, nbins=20, threshold=None, color='b',
-        xmin=None, xmax=None, ymin=None, ymax=None):
+        livetime=None, xmin=None, xmax=None, ymin=None, ymax=None):
     """
     Creates a plot of sensitive volume vs stat.
     """
@@ -422,10 +441,14 @@ def plot_volume_vs_stat(phyper_cube, min_stat, max_stat, stat_label,
     # add the plot to axes
     plot_volume_vs_stat_on_axes(ax, phyper_cube, min_stat, max_stat,
         logx=logx, logy=logy, nbins=nbins, threshold=threshold,
+        livetime=livetime,
         color=color, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
     # label
     ax.set_xlabel(stat_label)
-    ax.set_ylabel('$\mathcal{V}\,(\mathrm{Mpc}^3)$')
+    if livetime is not None:
+        ax.set_ylabel(r'$VT\,(\mathrm{Mpc}^3\,\mathrm{Myr})$')
+    else:
+        ax.set_ylabel(r'$\mathcal{V}\,(\mathrm{Mpc}^3)$')
 
     return fig
 
@@ -473,7 +496,9 @@ def plot_multivolumes_vs_stat(phyper_cubes, min_stat, max_stat, stat_label,
 def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
         ref_min_stat, ref_max_stat, test_threshold, ref_threshold,
         test_label='test', ref_label='reference',
-        logx=False, logy=False, nbins=20, test_color='b', ref_color='k',
+        test_livetime=None, ref_livetime=None,
+        logx=False, logy=False, nbins=100, test_color=pyplot.cm.jet(1.),
+        ref_color=pyplot.cm.jet(0.),
         test_xmin=None, test_xmax=None, ref_xmin=None, ref_xmax=None,
         ymin=None, ymax=None):
     """
@@ -486,13 +511,18 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
     fig.subplots_adjust(bottom=0.15)
     ax = fig.add_subplot(111)
 
+    if (ref_livetime is None and test_livetime is not None) or \
+            (ref_livetime is not None and test_livetime is None):
+        raise ValueError('must provide a livetime for both reference and test')
+
     # plot the reference volume using the bottom x-axis
     # Note: we'll set the threshold to None; we'll plot it after both
     # reference and test have been plotted
     _, yvals, refline = plot_volume_vs_stat_on_axes(ax,
         phyper_cube.reference_cube,
         ref_min_stat, ref_max_stat, logx=logx, logy=logy, nbins=nbins,
-        threshold=None, color=ref_color, xmin=ref_xmin, xmax=ref_xmax,
+        threshold=None, livetime=ref_livetime, color=ref_color,
+        xmin=ref_xmin, xmax=ref_xmax,
         ymin=ymin, ymax=ymax)
     # label
     ax.set_xlabel(phyper_cube.reference_cube.stat_label)
@@ -500,8 +530,8 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
 
     # now create a separate axis that shares the same x-axis
     # we'll only do this if there is a difference between the two axes
-    use_single_ax = test_min_stat == ref_min_stat and test_max_stat == ref_max_stat and \
-            test_threshold == ref_threshold
+    use_single_ax = test_min_stat == ref_min_stat and \
+        test_max_stat == ref_max_stat and test_threshold == ref_threshold
     if use_single_ax:
         # just use a single axis
         ax2 = ax
@@ -510,8 +540,8 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
     _, yvals, testline = plot_volume_vs_stat_on_axes(ax2,
         phyper_cube.test_cube,
         test_min_stat, test_max_stat, logx=logx, logy=False, nbins=nbins,
-        threshold=None, color=test_color, xmin=test_xmin,
-        xmax=test_xmax, ymin=ymin, ymax=ymax)
+        threshold=None, livetime=test_livetime, color=test_color,
+        xmin=test_xmin, xmax=test_xmax, ymin=ymin, ymax=ymax)
     ax2.set_xlabel(phyper_cube.test_cube.stat_label)
     plot_ymin, plot_ymax = min(plot_ymin, yvals.min()), \
         max(plot_ymax, yvals.max())
@@ -531,9 +561,9 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
     # this by adjusting the test xlims
     if not use_single_ax:
         test_xmin, test_xmax = ax2.get_xlim()
-        # find the displacement from the test threshold to the reference threshold
-        # in units of the test x-axis
-        # first, we'll get the location of the reference threshold in display units
+        # find the displacement from the test threshold to the reference
+        # threshold in units of the test x-axis; first, we'll get the location
+        # of the reference threshold in display units
         ref_thresh_coords = ax.transData.transform_point([ref_threshold,
             (ymax-ymin)/2.]) 
         # now convert that to test's x-axis units
@@ -547,17 +577,21 @@ def plot_twovolume_vs_stat(phyper_cube, test_min_stat, test_max_stat,
         'r--', lw=2, zorder=3)
     ax.set_ylim(ymin, ymax)
 
-    ax.set_ylabel('$\mathcal{V}\,(\mathrm{Mpc}^3)$')
+    if ref_livetime is not None:
+        ax.set_ylabel(r'$VT\,(\mathrm{Mpc}^3\,\mathrm{Myr})$')
+    else:
+        ax.set_ylabel(r'$\mathcal{V}\,(\mathrm{Mpc}^3)$')
 
     # create the legend
-    ax.legend([testline, refline], ['$%s$'%(test_label), '$%s$'%(ref_label)])
+    ax.legend([testline, refline], ['%s'%(test_label), '%s'%(ref_label)])
 
     return fig
 
 
 def plot_volume_vs_stat_from_layer(layer, min_stat, max_stat, stat_label,
         include_children=False, user_tag='', min_ninj=2,
-        logx=False, logy=False, nbins=20, threshold=None, color='b',
+        logx=False, logy=False, nbins=20, threshold=None, livetime=None,
+        color='b',
         xmin=None, xmax=None, ymin=None, ymax=None, dpi=300, verbose=False):
     """
     Wrapper around plot_volume_vs_stat that creates a volume_vs_stat plot for
@@ -593,6 +627,7 @@ def plot_volume_vs_stat_from_layer(layer, min_stat, max_stat, stat_label,
             sys.stdout.flush()
         fig = plot_volume_vs_stat(cube, min_stat, max_stat, stat_label,
             logx=logx, logy=logy, nbins=nbins, threshold=threshold,
+            livetime=livetime,
             color=color, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
         # save the figure
         plotname = fnametmplt %(layer.images_dir, user_tag, layer.level, ii) 
@@ -605,9 +640,11 @@ def plot_volume_vs_stat_from_layer(layer, min_stat, max_stat, stat_label,
 
 def plot_twovolume_vs_stat_from_layer(layer, test_min_stat, test_max_stat,
         ref_min_stat, ref_max_stat, test_threshold, ref_threshold,
+        test_livetime=None, ref_livetime=None,
         test_label='test', ref_label='reference',
         include_children=False, user_tag='', min_ninj=2,
-        logx=False, logy=False, nbins=20, test_color='b', ref_color='k',
+        logx=False, logy=False, nbins=100, test_color=pyplot.cm.jet(1.),
+        ref_color=pyplot.cm.jet(0.), livetime=None,
         test_xmin=None, test_xmax=None, ymin=None, ymax=None, dpi=300,
         verbose=False):
     """
@@ -645,6 +682,7 @@ def plot_twovolume_vs_stat_from_layer(layer, test_min_stat, test_max_stat,
         fig = plot_twovolume_vs_stat(cube, test_min_stat, test_max_stat,
             ref_min_stat, ref_max_stat, test_threshold, ref_threshold,
             test_label=test_label, ref_label=ref_label,
+            test_livetime=test_livetime, ref_livetime=ref_livetime,
             logx=logx, logy=logy, nbins=nbins, test_color=test_color,
             ref_color=ref_color, test_xmin=test_xmin, test_xmax=test_xmax,
             ymin=ymin, ymax=ymax)
@@ -665,7 +703,8 @@ def plot_twovolume_vs_stat_from_layer(layer, test_min_stat, test_max_stat,
 #----------------------------------------------------------------------
 
 def plot_volumes(phyper_cubes, xarg, xlabel, yarg, ylabel, threshold,
-        min_ninj=2, tmplt_label='', inj_label='', add_title=True,
+        livetime=None, min_ninj=2, tmplt_label='', inj_label='',
+        add_title=True,
         colormap='hot', maxvol=None, minvol=None, add_colorbar=False,
         annotate=True, fontsize=8, print_relative_err=False, 
         logx=False, logy=False, logz=False,
@@ -703,32 +742,41 @@ def plot_volumes(phyper_cubes, xarg, xlabel, yarg, ylabel, threshold,
     Vs = volumes[:,0]
     plus_errs = volumes[:,1]
     minus_errs = volumes[:,2]
+    if livetime is not None:
+        livetime = 1e-6 * livetime / lal.YRJUL_SI
+        Vs *= livetime
+        plus_errs = plus_errs * livetime
+        minus_errs = minus_errs * livetime
     if minvol is None:
         minvol = Vs[numpy.nonzero(Vs)].min()
     if maxvol is None:
         maxvol = Vs.max()
     # we'll divide by the closest power of 10 of the smallest value of these
     # volumes
-    conversion_factor = numpy.floor(numpy.log10(minvol))
-    Vs *= 10**(-conversion_factor)
-    plus_errs *= 10**(-conversion_factor)
-    minus_errs *= 10**(-conversion_factor)
-    minvol *= 10**(-conversion_factor)
-    maxvol *= 10**(-conversion_factor)
-    # if the conversion factor is > 10^9, we'll change the label to Gpc
-    # (V's are assumed to be in Mpc^3)
-    if conversion_factor >= 9:
-        conversion_factor -= 9.
-        units = 'Gpc'
+    if livetime is None:
+        conversion_factor = numpy.floor(numpy.log10(minvol))
+        Vs *= 10**(-conversion_factor)
+        plus_errs *= 10**(-conversion_factor)
+        minus_errs *= 10**(-conversion_factor)
+        minvol *= 10**(-conversion_factor)
+        maxvol *= 10**(-conversion_factor)
+        # if the conversion factor is > 10^9, we'll change the label to Gpc
+        # (V's are assumed to be in Mpc^3)
+        if conversion_factor >= 9:
+            conversion_factor -= 9.
+            units = 'Gpc'
+        else:
+            units = 'Mpc'
+        if conversion_factor == 0.:
+            prefactor = ''
+        elif conversion_factor == 1.:
+            prefactor = '10'
+        else:
+            prefactor = '10^{%i}' %(int(conversion_factor))
+        units_label = '%s\,\mathrm{%s}^3' %(prefactor, units)
     else:
-        units = 'Mpc'
-    if conversion_factor == 0.:
-        prefactor = ''
-    elif conversion_factor == 1.:
-        prefactor = '10'
-    else:
-        prefactor = '10^{%i}' %(int(conversion_factor))
-    units_label = '%s\,\mathrm{%s}^3' %(prefactor, units)
+        # if livetime is specified, we'll always plot Mpc^3 Myr
+        units_label = '\mathrm{Mpc}^3\,\mathrm{Myr}'
 
     # create a tiles plot on the axis
     _, cb = _plot_tiles(ax, Vs, plus_errs, minus_errs, phyper_cubes,
@@ -740,8 +788,12 @@ def plot_volumes(phyper_cubes, xarg, xlabel, yarg, ylabel, threshold,
         add_clickables=add_clickables)
 
     if add_title:
-        title = r'$\mathcal{V}_{%s%s}~(%s)$' %(tmplt_label, inj_label,
-            units_label)
+        if livetime is None:
+            title = r'$\mathcal{V}_{%s%s}~(%s)$' %(tmplt_label, inj_label,
+                units_label)
+        else:
+            title = r'$V_{%s%s}T\,(%s)$' %(tmplt_label, inj_label,
+                units_label)
         # if we are adding a colorbar, put the title on its axis
         if add_colorbar:
             cb.ax.set_ylabel(title)
@@ -752,8 +804,8 @@ def plot_volumes(phyper_cubes, xarg, xlabel, yarg, ylabel, threshold,
 
 
 def plot_subvolumes(phyper_cubes, xarg, xlabel, yarg, ylabel,
-        sub_xarg, sub_xlabel, sub_yarg, sub_ylabel, threshold, min_ninj=2,
-        tmplt_label='', inj_label='',
+        sub_xarg, sub_xlabel, sub_yarg, sub_ylabel, threshold, 
+        livetime=None, min_ninj=2, tmplt_label='', inj_label='',
         colormap='hot', maxvol=None, minvol=None,
         logx=False, logy=False, sub_logx=False, sub_logy=False, logz=False,
         xmin=None, xmax=None, ymin=None, ymax=None, dpi=300):
@@ -780,6 +832,8 @@ def plot_subvolumes(phyper_cubes, xarg, xlabel, yarg, ylabel,
             child.get_volume(threshold) for parent in phyper_cubes \
             for child in parent.children if child.nsamples >= min_ninj and \
             child.get_volume(threshold)[0] != 0.])[:,0]
+        if livetime is not None:
+            Vs *= 1e-6 * livetime / lal.YRJUL_SI
         if minvol is None:
             minvol = Vs.min()
         if maxvol is None:
@@ -787,7 +841,8 @@ def plot_subvolumes(phyper_cubes, xarg, xlabel, yarg, ylabel,
 
     # create the master plot with clickable elements
     mfig = plot_volumes(
-        phyper_cubes, xarg, xlabel, yarg, ylabel, threshold, min_ninj,
+        phyper_cubes, xarg, xlabel, yarg, ylabel, threshold, min_ninj=min_ninj,
+        livetime=livetime,
         tmplt_label=tmplt_label, inj_label=inj_label,
         add_title=True, colormap=colormap, maxvol=maxvol, minvol=minvol,
         add_colorbar=True, annotate=False, logx=logx, logy=logy, logz=logz,
@@ -832,7 +887,8 @@ def plot_subvolumes(phyper_cubes, xarg, xlabel, yarg, ylabel,
         else:
             plot_volumes(
                 parent.children, sub_xarg, None, sub_yarg, None, threshold,
-                min_ninj=min_ninj, add_title=False, colormap=colormap,
+                livetime=livetime, min_ninj=min_ninj, add_title=False,
+                colormap=colormap,
                 maxvol=maxvol, minvol=minvol,
                 add_colorbar=False, annotate=False,
                 logx=sub_logx, logy=sub_logy, logz=logz,
@@ -887,8 +943,9 @@ def plot_subvolumes(phyper_cubes, xarg, xlabel, yarg, ylabel,
 #----------------------------------------------------------------------
 
 def plot_gains(phyper_cubes, xarg, xlabel, yarg, ylabel, test_threshold,
-        ref_threshold, min_ninj=2, test_label='', ref_label='',
-        add_title=True, colormap='Greens', maxgain=None, mingain=None,
+        ref_threshold, test_livetime=None, ref_livetime=None, min_ninj=2,
+        test_label='', ref_label='',
+        add_title=True, colormap='RdBu_r', maxgain=None, mingain=None,
         add_colorbar=False, cbformat=None, annotate=True, fontsize=8,
         print_relative_err=False, logx=False, logy=False, logz=False,
         xmin=None, xmax=None, ymin=None, ymax=None, fig=None,
@@ -897,6 +954,13 @@ def plot_gains(phyper_cubes, xarg, xlabel, yarg, ylabel, test_threshold,
     Given a list of PHyperCubeGains, creates a tile plots of the fractional
     gains.
     """
+    if (ref_livetime is None and test_livetime is not None) or \
+            (ref_livetime is not None and test_livetime is None):
+        raise ValueError('must provide a livetime for both reference and test')
+    if ref_livetime is not None:
+        time_factor = float(test_livetime) / ref_livetime
+    else:
+        time_factor = 1.
     if fig is None:
         mfig = plot_utils.figure(dpi=dpi)
     else:
@@ -924,8 +988,8 @@ def plot_gains(phyper_cubes, xarg, xlabel, yarg, ylabel, test_threshold,
     gains = numpy.array([this_cube.get_fractional_gain(ref_threshold,
         test_threshold) \
         for this_cube in phyper_cubes]).astype(numpy.float)
-    Gs = gains[:,0]
-    gain_errs = gains[:,1]
+    Gs = time_factor * gains[:,0]
+    gain_errs = time_factor * gains[:,1]
 
     # create a tiles plot on the axis
     _, cb = _plot_tiles(ax, Gs, gain_errs, gain_errs, phyper_cubes,
@@ -938,26 +1002,39 @@ def plot_gains(phyper_cubes, xarg, xlabel, yarg, ylabel, test_threshold,
         add_clickables=add_clickables)
 
     if add_title:
-        title = r'$\mathcal{G}^{%s}_{%s}$' %(test_label, ref_label)
-        # if we are adding a colorbar, put the title on its axis
-        if add_colorbar:
-            cb.ax.set_ylabel(title, rotation=0, labelpad=-5)
+        if ref_livetime is not None:
+            Glbl = r'$\mathcal{G}_{VT}$'
         else:
-            ax.set_title(title)
+            Glbl = r'$\mathcal{G}$'
+        title = '%s / %s' %(test_label, ref_label)
+        if add_colorbar:
+            cb.ax.set_ylabel(Glbl, rotation=0, labelpad=-2)
+        else:
+            title = '%s (%s)' %(Glbl, title)
+        ax.set_title(title)
 
     return mfig
 
 
 def plot_subgains(phyper_cubes, xarg, xlabel, yarg, ylabel,
         sub_xarg, sub_xlabel, sub_yarg, sub_ylabel, test_threshold,
-        ref_threshold, min_ninj=2, test_label='', ref_label='',
-        colormap='Greens',  maxgain=None, mingain=None,
+        ref_threshold, test_livetime=None, ref_livetime=None, min_ninj=2,
+        test_label='', ref_label='',
+        colormap='RdBu_r',  maxgain=None, mingain=None,
         logx=False, logy=False, sub_logx=False, sub_logy=False, logz=False,
         xmin=None, xmax=None, ymin=None, ymax=None, dpi=300):
     """
     Similar to plot_gains, but each tile shows the relative gains of a
     sub-layer of tiles.
     """
+    if (ref_livetime is None and test_livetime is not None) or \
+            (ref_livetime is not None and test_livetime is None):
+        raise ValueError('must provide a livetime for both reference and test')
+    if ref_livetime is not None:
+        time_factor = float(test_livetime) / ref_livetime
+    else:
+        time_factor = 1.
+
     # only use phyper_cubes that have enough injections
     phyper_cubes = [this_cube for this_cube in phyper_cubes if \
         this_cube.nsamples >= min_ninj and \
@@ -973,7 +1050,7 @@ def plot_subgains(phyper_cubes, xarg, xlabel, yarg, ylabel,
 
     # to ensure we get properly normalized colors, find the largest
     # and smallest gains across all of the children of all of the phyper_cubes
-    Gs = numpy.array([
+    Gs = time_factor * numpy.array([
         child.get_fractional_gain(ref_threshold, test_threshold)
         for parent in phyper_cubes \
         for child in parent.children if child.nsamples >= min_ninj and \
@@ -997,7 +1074,9 @@ def plot_subgains(phyper_cubes, xarg, xlabel, yarg, ylabel,
 
     # create the master plot with clickable elements
     mfig = plot_gains(phyper_cubes, xarg, xlabel, yarg, ylabel, test_threshold,
-        ref_threshold, min_ninj, test_label=test_label, ref_label=ref_label,
+        ref_threshold, min_ninj=min_ninj,
+        test_livetime=test_livetime, ref_livetime=ref_livetime,
+        test_label=test_label, ref_label=ref_label,
         add_title=True, cbformat=cbformat, colormap=colormap,
         maxgain=maxgain, mingain=mingain,
         add_colorbar=True, annotate=False, logx=logx, logy=logy, logz=logz,
@@ -1043,6 +1122,7 @@ def plot_subgains(phyper_cubes, xarg, xlabel, yarg, ylabel,
             plot_gains(
                 parent.children, sub_xarg, None, sub_yarg, None,
                 test_threshold, ref_threshold, min_ninj=min_ninj,
+                test_livetime=test_livetime, ref_livetime=ref_livetime,
                 add_title=False, colormap=colormap,
                 maxgain=maxgain, mingain=mingain,
                 add_colorbar=False, annotate=False,
@@ -1101,8 +1181,8 @@ def plot_subgains(phyper_cubes, xarg, xlabel, yarg, ylabel,
 #
 #   Volumes
 #
-def plot_volumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
-        tmplt_label='', inj_label='',
+def plot_volumes_from_layer(layer, threshold, livetime=None, user_tag='',
+        min_ninj=2, tmplt_label='', inj_label='',
         colormap='hot', maxvol=None, minvol=None, fontsize=8,
         print_relative_err=False, 
         logz=False, dpi=300, verbose=False):
@@ -1134,7 +1214,8 @@ def plot_volumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
             sys.stdout.flush()
         mfig = plot_volumes(
             parent.children, layer.x_param, layer.x_param.label,
-            layer.y_param, layer.y_param.label, threshold, min_ninj=min_ninj,
+            layer.y_param, layer.y_param.label, threshold, livetime=livetime,
+            min_ninj=min_ninj,
             tmplt_label=tmplt_label, inj_label=inj_label, annotate=True,
             add_colorbar=False, colormap=colormap, maxvol=maxvol,
             minvol=minvol, fontsize=fontsize,
@@ -1151,8 +1232,8 @@ def plot_volumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
         print >> sys.stdout, ""
 
 
-def plot_subvolumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
-        tmplt_label='', inj_label='',
+def plot_subvolumes_from_layer(layer, threshold, livetime=None, user_tag='',
+        min_ninj=2, tmplt_label='', inj_label='',
         colormap='hot', maxvol=None, minvol=None, logz=False, dpi=300,
         verbose=False):
     """
@@ -1189,6 +1270,7 @@ def plot_subvolumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
             layer.y_param, layer.y_param.label,
             layer.sub_layer.x_param, layer.sub_layer.x_param.label,
             layer.sub_layer.y_param, layer.sub_layer.y_param.label, threshold,
+            livetime=livetime,
             min_ninj=min_ninj, tmplt_label=tmplt_label, inj_label=inj_label,
             colormap=colormap, maxvol=maxvol, minvol=minvol,
             logx=layer.plot_log_x, logy=layer.plot_log_y,
@@ -1210,9 +1292,10 @@ def plot_subvolumes_from_layer(layer, threshold, user_tag='', min_ninj=1,
 #
 #   Relative gains
 #
-def plot_gains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
-        min_ninj=1, test_label='', ref_label='',
-        colormap='Greens', maxgain=None, mingain=None, fontsize=8,
+def plot_gains_from_layer(layer, test_threshold, ref_threshold, 
+        test_livetime=None, ref_livetime=None, user_tag='',
+        min_ninj=2, test_label='', ref_label='',
+        colormap='RdBu_r', maxgain=None, mingain=None, fontsize=8,
         print_relative_err=False, logz=False, include_volume_plots=False,
         minvol=None, maxvol=None, dpi=300, verbose=False):
     """
@@ -1244,6 +1327,7 @@ def plot_gains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
         mfig = plot_gains(
             parent.children, layer.x_param, layer.x_param.label,
             layer.y_param, layer.y_param.label, test_threshold, ref_threshold,
+            test_livetime=test_livetime, ref_livetime=ref_livetime,
             min_ninj=min_ninj, test_label=test_label, ref_label=ref_label,
             add_title=True, maxgain=maxgain, mingain=mingain,
             add_colorbar=False, colormap=colormap,
@@ -1265,13 +1349,14 @@ def plot_gains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
             mfig = plot_volumes([child.test_cube for child in parent.children],
                 layer.x_param, layer.x_param.label,
                 layer.y_param, layer.y_param.label, test_threshold,
+                livetime=test_livetime,
                 min_ninj=min_ninj,
-                tmplt_label=test_label, inj_label='', annotate=True,
+                tmplt_label='', inj_label='', annotate=True,
                 add_colorbar=False, colormap='hot', maxvol=maxvol,
                 minvol=minvol, fontsize=fontsize,
                 print_relative_err=print_relative_err,
                 logx=layer.plot_log_x, logy=layer.plot_log_y,
-                logz=True, add_clickables=False,
+                logz=False, add_clickables=False,
                 xmin=layer.plot_x_min, xmax=layer.plot_x_max,
                 ymin=layer.plot_y_min, ymax=layer.plot_y_max)
             # save the figure
@@ -1286,8 +1371,8 @@ def plot_gains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
                 [child.reference_cube for child in parent.children],
                 layer.x_param, layer.x_param.label,
                 layer.y_param, layer.y_param.label, ref_threshold,
-                min_ninj=min_ninj,
-                tmplt_label=ref_label, inj_label='', annotate=True,
+                min_ninj=min_ninj, livetime=ref_livetime,
+                tmplt_label='', inj_label='', annotate=True,
                 add_colorbar=False, colormap='hot', maxvol=maxvol,
                 minvol=minvol, fontsize=fontsize,
                 print_relative_err=print_relative_err,
@@ -1307,8 +1392,9 @@ def plot_gains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
 
 
 def plot_subgains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
-        min_ninj=1, test_label='', ref_label='',
-        colormap='Greens', maxgain=None, mingain=None, logz=False, dpi=300,
+        min_ninj=2, test_livetime=None, ref_livetime=None,
+        test_label='', ref_label='',
+        colormap='RdBu_r', maxgain=None, mingain=None, logz=False, dpi=300,
         verbose=False):
     """
     Wrapper around plot_subgains that creates a subgain plot for every
@@ -1345,6 +1431,7 @@ def plot_subgains_from_layer(layer, test_threshold, ref_threshold, user_tag='',
             layer.sub_layer.x_param, layer.sub_layer.x_param.label,
             layer.sub_layer.y_param, layer.sub_layer.y_param.label,
             test_threshold, ref_threshold, min_ninj=min_ninj,
+            test_livetime=test_livetime, ref_livetime=ref_livetime,
             test_label=test_label, ref_label=ref_label,
             colormap=colormap, maxgain=maxgain, mingain=mingain,
             logx=layer.plot_log_x, logy=layer.plot_log_y,

@@ -50,6 +50,7 @@ parser = OptionParser()
 parser.add_option('', '--test-cache-file', metavar="TESTFILE.CACHE:TYPE[:TESTLABEL]", help=r'Required. Cache file containing test result files, and their type. The type is the workflow from which the results came. Current type options are %s. All the files in the cache file must come from the same type of workflow. You can also specify a label for the test results; if none provided "test" will be used. The label is in latex math mode; if you want just plain text, enclose in a \textrm{...}. For example, if a cache file called results.cache contained one or more sqlite databases that were created by a pycbc workflow, and you wanted to label this as "pycbc", specify: "results.cache:pycbc_sqlite:\textrm{pycbc}".')
 parser.add_option('', '--reference-cache-file',  metavar="REFFILE.CACHE:TYPE[:REFLABEL]", help='Required if reference-stat is not "optimal". Cache file containing reference result databases, and their type. You can also specify a label for the reference results; if none provided "reference" will be used. See test-cache-file for more details.')
 parser.add_option('-m', '--map-label', help='Required if either test or reference results type is pycbc_sqlite. The map label to use when getting found injections.')
+parser.add_option('-T', '--include-livetime', action='store_true', default=False, help='Calculate gain using VT instead of just V.')
 parser.add_option('-l', '--layer-config-file', help='Required. A config file containing the layer parameters to use.') 
 parser.add_option('', '--reference-threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies for the reference run.')
 parser.add_option('', '--test-threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies for the test run.')
@@ -59,6 +60,7 @@ parser.add_option('', '--test-rank-by', metavar='max|min', help='Options are "ma
 parser.add_option('', '--reference-rank-by', metavar='max|min', help='Same as test-rank-by, but for the reference results. Ignored if "reference-stat is "optimal".')
 parser.add_option('', '--test-stat-range', metavar='MIN_STAT,MAX_STAT', help='Required. Stat range to use when creating volume vs. stat plots for the test results. Must specify both a minimum and a maximum.')
 parser.add_option('', '--reference-stat-range', metavar='MIN_STAT,MAX_STAT', help='Required. Stat range to use when creating volume vs. stat plots for the reference results. Must specify both a minimum and a maximum. This must be provided even if reference-stat is "optimal."')
+parser.add_option('', '--log-vol-vs-stat', action='store_true', default=False, help='Make the y-axis of the volume vs ranking-stat plots log10.')
 parser.add_option('', '--log-stat', action='store_true', default=False, help='Make the x-axis of the volume vs ranking-stat plots log10. This will make both the test and reference stats log10.')
 parser.add_option('-N', '--min-ninj', type='int', default=10, help='Minimum number of injections that must exist in a block in in order to calculate volume. If a block has less then this, it will be skipped. Default is 10.')
 parser.add_option('', '--print-relative-error', action='store_true', default=False, help='Turn on to print relative errors instead of absolute errors.')
@@ -91,7 +93,7 @@ if not opts.test_cache_file:
 cache_info = opts.test_cache_file.split(':')
 if len(cache_info) == 2:
     test_cache, test_results_type = cache_info
-    test_label = r'\mathrm{test}'
+    test_label = 'test'
 elif len(cache_info) == 3:
     test_cache, test_results_type, test_label = cache_info
 else:
@@ -101,6 +103,8 @@ if test_results_type not in plot.known_pipelines:
         test_results_type))
 if test_results_type == 'pycbc_sqlite' and opts.map_label is None:
     raise ValueError("test results type is pycbc_sqlite, but no --map-label specified")
+if test_results_type == 'overlaps' and opts.include_livetime:
+    raise ValueError("cannot include-livetime for overlaps databases")
 
 # parse reference cache file option
 if opts.reference_stat != 'optimal':
@@ -110,7 +114,7 @@ if opts.reference_stat != 'optimal':
     cache_info = opts.reference_cache_file.split(':')
     if len(cache_info) == 2:
         ref_cache, ref_results_type = cache_info
-        ref_label = r'\mathrm{reference}'
+        ref_label = 'reference'
     elif len(cache_info) == 3:
         ref_cache, ref_results_type, ref_label = cache_info
     else:
@@ -122,6 +126,8 @@ if opts.reference_stat != 'optimal':
     if ref_results_type == 'pycbc_sqlite' and opts.map_label is None:
         raise ValueError("reference results type is pycbc_sqlite, but no " +
             "--map-label specified")
+    if ref_results_type == 'overlaps' and opts.include_livetime:
+        raise ValueError("cannot include-livetime for overlaps databases")
 
 if not opts.output_dir:
     raise ValueError('output-dir required')
@@ -279,6 +285,27 @@ elif test_results_type == "hdfcoinc":
         sim_inspiral_files=injection_files, load_inj_distribution=False,
         verbose=True)
 
+if opts.include_livetime:
+    if test_results_type == "pycbc_sqlite":
+        # we only need the simulation livetimes
+        test_livetime = plot.pycbc_sqlite.get_livetime(filenames
+            )['simulation']
+        # Since all of the on_instruments are gathered, and since, by
+        # by definition, the on_instrument times do not intersect, we will
+        # just add them all up
+        # Note: I'm ignoring the veto_def_name here; this can lead to
+        # errors if there are multiple vetoe cats in a single database;
+        # in that case, I'll just raise an error
+        if len(set([veto_cat for (_,veto_cat) in livetime])) != 1:
+            raise ValueError("file %s has multiple veto categorgies, but " +\
+                "I can only handle one veto category in each file; sorry!")
+        test_livetime = sum([dur for _,dur in livetime.values()])
+    elif test_results_type == "hdfcoinc":
+        test_livetime = plot.hdfcoinc.get_livetime(statmap_files) 
+    print "test livetime (s): ", test_livetime
+else:
+    test_livetime = None
+
 if apply_cut:
     print "applying cuts"
     test_results = plot.slice_results(test_results, apply_cut)
@@ -302,10 +329,31 @@ if opts.reference_stat != 'optimal':
         ref_results, _ = plot.hdfcoinc.get_injection_results(injfind_files,
             sim_inspiral_files=injection_files, load_inj_distribution=False,
             verbose=True)
+    if opts.include_livetime:
+        if ref_results_type == "pycbc_sqlite":
+            # we only need the simulation livetimes
+            ref_livetime = plot.pycbc_sqlite.get_livetime(filenames
+                )['simulation']
+            # Since all of the on_instruments are gathered, and since, by
+            # by definition, the on_instrument times do not intersect, we will
+            # just add them all up
+            # Note: I'm ignoring the veto_def_name here; this can lead to
+            # errors if there are multiple vetoe cats in a single database;
+            # in that case, I'll just raise an error
+            if len(set([veto_cat for (_,veto_cat) in livetime])) != 1:
+                raise ValueError("file %s has multiple veto categorgies, but " +\
+                    "I can only handle one veto category in each file; sorry!")
+            ref_livetime = sum([dur for _,dur in livetime.values()])
+        elif ref_results_type == "hdfcoinc":
+            ref_livetime = plot.hdfcoinc.get_livetime(statmap_files) 
+        print "ref. livetime (s): ", ref_livetime
+    else:
+        ref_livetime = None
 else:
     # just set the reference data to be the same as the test
     ref_results = test_results
-    ref_label = r'\mathrm{optimal}'
+    ref_label = 'optimal'
+    ref_livetime = test_livetime
 
 print "Number of test results: %i" % len(test_results)
 print "Number of reference results: %i" % len(ref_results)
@@ -356,33 +404,6 @@ if opts.use_global_norm:
 # all of the tiles
 mingain = opts.mingain
 maxgain = opts.maxgain
-#if mingain is None or maxgain is None:
-#    print "getting min, max gains"
-#    Gs = numpy.array([child.get_fractional_gain(ref_threshold,
-#        test_threshold)[0] for layer in layers \
-#        for child in layer.all_children \
-#            if child.nsamples >= opts.min_ninj and numpy.isfinite(
-#            child.get_fractional_gain(ref_threshold, test_threshold)[0])])
-#    if mingain is None:
-#        mingain = Gs.min()
-#    if maxgain is None:
-#        maxgain = Gs.max()
-
-#if opts.include_volume_plots:
-#    # if we're including volume plots, get the minimum and maximum volume
-#    # from all tiles
-#    test_Vs = numpy.array([child.test_cube.get_volume(test_threshold)[0] \
-#        for layer in layers \
-#        for child in layer.all_children \
-#            if child.nsamples >= opts.min_ninj and numpy.isfinite(
-#            child.get_fractional_gain(ref_threshold, test_threshold)[0])])
-#    ref_Vs = numpy.array([child.reference_cube.get_volume(ref_threshold)[0] \
-#        for layer in layers \
-#        for child in layer.all_children \
-#            if child.nsamples >= opts.min_ninj and numpy.isfinite(
-#            child.get_fractional_gain(ref_threshold, test_threshold)[0])])
-#    minvol = min(test_Vs.min(), ref_Vs.min())
-#    maxvol = max(test_Vs.max(), ref_Vs.max())
 minvol = maxvol = None
 
 # for keeping track of commands, we'll add the arguments used to create this
@@ -401,13 +422,15 @@ while this_layer is not None:
     this_is_lowest_layer = this_layer.sub_layer is None
     plot_volumes.plot_twovolume_vs_stat_from_layer(this_layer, test_min_stat,
         test_max_stat, ref_min_stat, ref_max_stat, test_threshold,
-        ref_threshold, test_label=test_label, ref_label=ref_label,
+        ref_threshold, test_livetime=test_livetime, ref_livetime=ref_livetime,
+        test_label=test_label, ref_label=ref_label,
         include_children=this_is_lowest_layer,
         user_tag=opts.user_tag, min_ninj=opts.min_ninj, logx=opts.log_stat,
-        logy=True, nbins=20, dpi=opts.dpi, verbose=True)
+        logy=opts.log_vol_vs_stat, nbins=100, dpi=opts.dpi, verbose=True)
 
     plot_volumes.plot_gains_from_layer(this_layer, test_threshold,
-        ref_threshold, user_tag=opts.user_tag, min_ninj=opts.min_ninj,
+        ref_threshold, test_livetime=test_livetime, ref_livetime=ref_livetime,
+        user_tag=opts.user_tag, min_ninj=opts.min_ninj,
         test_label=test_label, ref_label=ref_label, colormap=opts.colormap,
         maxgain=maxgain, mingain=mingain, fontsize=opts.fontsize,
         print_relative_err=opts.print_relative_error,
@@ -417,7 +440,9 @@ while this_layer is not None:
     # if not the last layer, create the subvolumes plot
     if this_layer.sub_layer is not None:
         plot_volumes.plot_subgains_from_layer(this_layer, test_threshold,
-            ref_threshold, user_tag=opts.user_tag, min_ninj=opts.min_ninj,
+            ref_threshold,
+            test_livetime=test_livetime, ref_livetime=ref_livetime,
+            user_tag=opts.user_tag, min_ninj=opts.min_ninj,
             test_label=test_label, ref_label=ref_label, colormap=opts.colormap,
             maxgain=maxgain, mingain=mingain,
             logz=opts.logz, dpi=opts.dpi, verbose=True)
@@ -430,6 +455,7 @@ while this_layer is not None:
                 'child', ii)
             child.create_html_page(this_layer.root_dir, html_name,
                 test_threshold, ref_threshold, mapper=None,
+                ref_livetime=ref_livetime, test_livetime=test_livetime,
                 print_relative_error=opts.print_relative_error,
                 comments=command_line)
     # the top layer page is the index page; otherwise we use the template
@@ -442,6 +468,7 @@ while this_layer is not None:
         parent.create_html_page(this_layer.root_dir, html_name, test_threshold,
             ref_threshold, test_label=test_label, ref_label=ref_label,
             mapper=mapper,
+            ref_livetime=ref_livetime, test_livetime=test_livetime,
             print_relative_error=opts.print_relative_error,
             comments=command_line)
 

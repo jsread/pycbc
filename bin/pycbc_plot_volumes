@@ -26,10 +26,12 @@ parser = OptionParser()
 parser.add_option('-c', '--cache-file', metavar='FILE.cache:TYPE', help='Required. Cache file containing result files, and their type. The type is the workflow from which the results came. For example, if a cache file called results.cache contained one or more sqlite databases that were created by a pycbc workflow, specify: "results.cache:pycbc_sqlite". Current type options are %s. To do: will eventually add pycbc_hdf and gstlal. All the files in the cache file must come from the same type of workflow.' %(', '.join(plot.known_pipelines)))
 parser.add_option('-m', '--map-label', help='Required if results type is pycbc_sqlite. The map label to use when getting found injections.')
 parser.add_option('-l', '--layer-config-file', help='Required. A config file containing the layer parameters to use.') 
-parser.add_option('-T', '--threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies.')
+parser.add_option('-t', '--threshold', type='float', help='Required. The value of the ranking stat to use as the threshold when computing efficiencies.')
 parser.add_option('-R', '--ranking-stat', metavar='stat[:stat_label]', help=r'Required. The ranking stat to use for computing efficiency. Can also specify a stat label for plotting (latex math should be enclosed in $ signs).')
 parser.add_option('-B', '--rank-by', metavar='max|min', help='Required. Options are "max" or "min". If max (min) an injection will be considered found if its ranking stat is >= (<) the threshold.')
 parser.add_option('-r', '--stat-range', metavar='MIN_STAT,MAX_STAT[:log]', help='Required if not --skip-volume-vs-stat-plots. Stat range to use when creating volume vs. stat plots. Must specify both a minimum and a maximum. If would like the stat distribution to be log10, add ":log" after the max stat.')
+parser.add_option('-T', '--include-livetime', action='store_true', default=False, help='Plot VT instead of just V.')
+parser.add_option('', '--log-vol-vs-stat', action='store_true', default=False, help='Make the y-axis of the volume vs ranking-stat plots log10.')
 parser.add_option('-N', '--min-ninj', type='int', default=10, help='Minimum number of injections that must exist in a block in in order to calculate volume. If a block has less then this, it will be skipped. Default is 10.')
 parser.add_option('', '--print-relative-error', action='store_true', default=False, help='Turn on to print relative errors instead of absolute errors.')
 parser.add_option('', '--use-distance-bins', action='store_true', default=False, help="If turned on, will use distance bins to compute sensitive volumes, rather than the standard Monte Carlo method of using the average of the integrand. Generally, this will yield larger variance, so turn this on with caution.")
@@ -62,11 +64,13 @@ if len(opts.cache_file.split(':')) != 2:
     raise ValueError('--cache-file argument not formatted correctly; see help')
 cache_file, results_type = opts.cache_file.split(':')
 if results_type not in plot.known_pipelines:
-    raise ValueError("unrecognized result file type %s; see --cache-file help" %(
-        results_type))
+    raise ValueError("unrecognized result file type %s; " %(
+        results_type) + "see --cache-file help")
 if results_type == 'pycbc_sqlite' and opts.map_label is None:
     raise ValueError("results type is pycbc_sqlite, but no --map-label " +
         "was specified")
+if results_type == 'overlaps' and opts.include_livetime:
+    raise ValueError("cannot include-livetime for overlaps databases")
 
 if not opts.output_dir:
     raise ValueError('output-dir required')
@@ -210,6 +214,27 @@ elif results_type == "hdfcoinc":
         sim_inspiral_files=injection_files, load_inj_distribution=False,
         verbose=True)
 
+if opts.include_livetime:
+    if results_type == "pycbc_sqlite":
+        # we only need the simulation livetimes
+        livetime = plot.pycbc_sqlite.get_livetime(filenames
+            )['simulation']
+        # Since all of the on_instruments are gathered, and since, by
+        # by definition, the on_instrument times do not intersect, we will
+        # just add them all up
+        # Note: I'm ignoring the veto_def_name here; this can lead to
+        # errors if there are multiple vetoe cats in a single database;
+        # in that case, I'll just raise an error
+        if len(set([veto_cat for (_,veto_cat) in livetime])) != 1:
+            raise ValueError("file %s has multiple veto categorgies, but " +\
+                "I can only handle one veto category in each file; sorry!")
+        livetime = sum([dur for _,dur in livetime.values()])
+    elif results_type == "hdfcoinc":
+        livetime = plot.hdfcoinc.get_livetime(statmap_files) 
+    print "livetime (s): ", livetime
+else:
+    livetime = None
+
 print "total number of injections: %i" %(len(results))
 apply_cut = {}
 for thiscut in opts.apply_cut:
@@ -273,11 +298,12 @@ while this_layer is not None:
         plot_volumes.plot_volume_vs_stat_from_layer(this_layer, min_stat,
             max_stat, stat_label, include_children=this_is_lowest_layer,
             user_tag=opts.user_tag, min_ninj=opts.min_ninj, logx=stat_dist,
-            logy=True, nbins=20, threshold=opts.threshold, dpi=opts.dpi,
-            verbose=True)
+            logy=opts.log_vol_vs_stat, nbins=100, threshold=opts.threshold,
+            livetime=livetime, dpi=opts.dpi, verbose=True)
 
     plot_volumes.plot_volumes_from_layer(this_layer, opts.threshold,
         user_tag=opts.user_tag, min_ninj=opts.min_ninj,
+        livetime=livetime,
         tmplt_label='', inj_label='', colormap=opts.colormap,
         maxvol=maxvol, minvol=minvol, fontsize=opts.fontsize,
         print_relative_err=opts.print_relative_error,
@@ -287,6 +313,7 @@ while this_layer is not None:
     if not this_is_lowest_layer:
         plot_volumes.plot_subvolumes_from_layer(this_layer, opts.threshold,
             user_tag=opts.user_tag, min_ninj=opts.min_ninj,
+            livetime=livetime,
             tmplt_label='', inj_label='', colormap=opts.colormap,
             maxvol=maxvol, minvol=minvol,
             logz=opts.logz, dpi=opts.dpi, verbose=True)
@@ -309,6 +336,7 @@ while this_layer is not None:
             html_name = html_tmplt %(this_layer.web_dir, this_layer.level,
                 'parent', ii)
         parent.create_html_page(this_layer.root_dir, html_name,
+            livetime=livetime,
             mapper=mapper, threshold=opts.threshold,
             print_relative_error=opts.print_relative_error,
             comments=command_line)

@@ -360,13 +360,13 @@ class PHyperCube:
         self._cached_volumes.clear()
 
     def create_html_page(self, out_dir, html_name, threshold,
-            mainplots_widths=1000, print_relative_error=False,
+            livetime=None, mainplots_widths=1000, print_relative_error=False,
             mapper=None, comments=None):
         """
         Create's self html page. See _create_html_page for details.
         """
-        _create_html_page(self, out_dir, html_name, threshold,
-            mainplots_widths=mainplots_widths,
+        _create_html_page(self, out_dir, html_name, threshold=threshold,
+            livetime=livetime, mainplots_widths=mainplots_widths,
             print_relative_error=print_relative_error, mapper=mapper,
             comments=comments)
         self.html_page = '%s/%s' %(out_dir, html_name)
@@ -644,14 +644,16 @@ class PHyperCubeGain:
         return fractional_gain, gain_err
 
     def create_html_page(self, out_dir, html_name, test_threshold,
-        ref_threshold, test_label='', ref_label='', mainplots_widths=1000,
-        print_relative_error=False,
+        ref_threshold, test_label='', ref_label='',
+        test_livetime=None, ref_livetime=None, print_relative_error=False,
+        mainplots_widths=1000,
         mapper=None, comments=None):
         """
         Create's self html page. See _create_html_page for details.
         """
-        _create_gain_html_page(self, out_dir, html_name, test_threshold,
-            ref_threshold=ref_threshold,
+        _create_gain_html_page(self, out_dir, html_name,
+            threshold=test_threshold, ref_threshold=ref_threshold,
+            test_livetime=test_livetime, ref_livetime=ref_livetime,
             test_label=test_label, ref_label=ref_label,
             mainplots_widths=mainplots_widths,
             print_relative_error=print_relative_error, mapper=mapper,
@@ -785,7 +787,8 @@ def format_volume_text(V, err_plus, err_minus=None, include_units=True,
                 err_minus_txt, units_label)
 
 
-def _create_html_page(phyper_cube, out_dir, html_name, threshold=None,
+def _create_html_page(phyper_cube, out_dir, html_name, livetime=None,
+        threshold=None,
         ref_threshold=None, mainplots_widths=1000, print_relative_error=False,
         mapper=None, comments=None):
     """
@@ -846,6 +849,9 @@ def _create_html_page(phyper_cube, out_dir, html_name, threshold=None,
             stat_label, plot_utils.drop_trailing_zeros(threshold),
             format_volume_text(V, err, err_minus=err_minus,
             use_relative_err=print_relative_error))
+        if livetime is not None:
+            print >> f, "Livetime: %.2f days <br />" %(
+                livetime / (3600.*24.))
         if write_gain:
             V, err, err_minus = phyper_cube.reference_cube.get_volume(
                 ref_threshold)
@@ -925,24 +931,24 @@ def _create_html_page(phyper_cube, out_dir, html_name, threshold=None,
     f.close()
 
 
-def _create_gain_html_page(phyper_cube, out_dir, html_name, threshold=None,
-        ref_threshold=None, test_label='', ref_label='',
+def _create_gain_html_page(phyper_cube, out_dir, html_name,
+        test_livetime=None, ref_livetime=None,
+        threshold=None,
+        ref_threshold=None, test_label=None, ref_label=None,
         mainplots_widths=1000, print_relative_error=False,
         mapper=None, comments=None):
     """
     Creates an html page for the given PHyperCubeGain.
     """
-    # check that the given thresholds match the phyper_cube type
-    write_gain = True #isinstance(phyper_cube, PHyperCubeGain)
-    if write_gain and ref_threshold is None:
-        raise ValueError("ref_threshold needed for PHyperCubeGain pages")
+    if ref_threshold is None:
+        raise ValueError("must provide a threshold")
     if threshold is None:
         raise ValueError("must provide a threshold")
 
-    if test_label != '':
-        test_label = ' ($%s$)' %(test_label)
-    if ref_label != '':
-        ref_label = ' ($%s$)' %(ref_label)
+    if test_label is None:
+        test_label = 'test'
+    if ref_label is None:
+        ref_label = 'reference'
 
     #
     #   Open the html page and write the header
@@ -976,31 +982,40 @@ def _create_gain_html_page(phyper_cube, out_dir, html_name, threshold=None,
     print >> f, "</h1>"
     # print some basic info about this cube
     print >> f, "<h2>"
-    print >> f, "Test number of injections: %i<br />" %(
-        phyper_cube.test_cube.nsamples)
-    print >> f, "Reference number of injections: %i<br />" %(
-        phyper_cube.reference_cube.nsamples)
+    print >> f, "Test (%s) number of injections: %i<br />" %(
+        test_label, phyper_cube.test_cube.nsamples)
+    print >> f, "Reference (%s) number of injections: %i<br />" %(
+        ref_label, phyper_cube.reference_cube.nsamples)
     if phyper_cube.reference_cube.astro_prior is not None:
         print >> f, "Astrophysical prior: %s<br />" %(
             phyper_cube.reference_cube.astro_prior.description)
     if phyper_cube.nsamples > 1:
         V, err, err_minus = phyper_cube.test_cube.get_volume(threshold)
         stat_label = phyper_cube.test_cube.stat_label
-        print >> f, "Test%s sensitive volume at " %(test_label) +\
+        print >> f, "%s sensitive volume at " %(test_label) +\
             "%s $= %s$:<br />&nbsp&nbsp%s<br />" %(
             stat_label, plot_utils.drop_trailing_zeros(threshold),
             format_volume_text(V, err, err_minus=err_minus,
             use_relative_err=print_relative_error))
+        if test_livetime is not None:
+            print >> f, "%s livetime: %.2f days <br />" %(test_label,
+                test_livetime / (3600.*24.))
         V, err, err_minus = phyper_cube.reference_cube.get_volume(
             ref_threshold)
-        print >> f, "Reference%s sensitive volume at " %(ref_label) +\
+        print >> f, "%s sensitive volume at " %(ref_label) +\
             "%s $= %s$:<br />&nbsp&nbsp%s<br />" %(
             phyper_cube.reference_cube.stat_label,
             plot_utils.drop_trailing_zeros(ref_threshold),
             format_volume_text(V, err, err_minus=err_minus,
             use_relative_err=print_relative_error))
+        if ref_livetime is not None:
+            print >> f, "%s livetime: %.2f days<br />" %(ref_label,
+                ref_livetime / (3600.*24.))
         G, err = phyper_cube.get_fractional_gain(ref_threshold,
             threshold)
+        if test_livetime is not None:
+            G = G * test_livetime/ref_livetime
+            err = err * test_livetime / ref_livetime
         print >> f, "Relative gain:<br />&nbsp&nbsp%s<br />" %(
             format_volume_text(G, err, include_units=False,
                 use_relative_err=print_relative_error,
@@ -1052,14 +1067,14 @@ def _create_gain_html_page(phyper_cube, out_dir, html_name, threshold=None,
                 view_width=mainplots_widths)
     # if the reference or test cubes have volume plots, add them
     if phyper_cube.test_cube.tiles_plot is not None:
-        print >> f, "<hr /><h3>Test%s volumes</h3>" %(test_label)
+        print >> f, "<hr /><h3>%s volumes</h3>" %(test_label)
         mfig = phyper_cube.test_cube.tiles_plot
         figname = os.path.relpath(os.path.abspath(mfig.saved_filename),
             os.path.dirname(os.path.abspath(html_page)))
         print >> f, '<img src="%s" width="%i" /><br />' %(
             figname, mainplots_widths)
     if phyper_cube.reference_cube.tiles_plot is not None:
-        print >> f, "<hr /><h3>Reference%s volumes</h3>" %(ref_label)
+        print >> f, "<hr /><h3>%s volumes</h3>" %(ref_label)
         mfig = phyper_cube.reference_cube.tiles_plot
         figname = os.path.relpath(os.path.abspath(mfig.saved_filename),
             os.path.dirname(os.path.abspath(html_page)))
