@@ -152,7 +152,7 @@ class UniformComponent(CBCDistribution):
     _optional_parameters = ['mtotal']
 
     def __init__(self, min_mass1, max_mass1, min_mass2, max_mass2,
-            min_mtotal=None, max_mtotal=None):
+            min_mtotal=None, max_mtotal=None, ensure_m1gtm2=True):
         # ensure data types are correct
         min_mass1 = float(min_mass1)
         max_mass1 = float(max_mass1)
@@ -162,7 +162,7 @@ class UniformComponent(CBCDistribution):
             min_mtotal = float(min_mtotal)
         if max_mtotal is not None:
             max_mtotal = float(max_mtotal)
-        if max_mass2 > max_mass1:
+        if ensure_m1gtm2 and max_mass2 > max_mass1:
             bounds = {'mass2': (min_mass1, max_mass1),
                 'mass1': (min_mass2, max_mass2)}
         else:
@@ -571,7 +571,6 @@ class DominikEtAl2012(CBCDistribution):
     mass. For this reason, when using pdf_from_result, the masses are
     are automatically de-red shifted to get the correct result.
     """
-    #_parameters = ['mchirp', 'eta']
     _parameters = ['mass1', 'mass2']
     _optional_parameters = []
     name = 'dominik_etal_2012'
@@ -585,27 +584,16 @@ class DominikEtAl2012(CBCDistribution):
         self._kernel, m1s, m2s = _get_data_and_kernel(filename)
         m1s_min, m1s_max = m1s.min(), m1s.max()
         m2s_min, m2s_max = m2s.min(), m2s.max()
-        #self._kernel, mchirps, etas = _get_data_and_kernel(filename)
-        #mchirp_min, mchirp_max = mchirps.min(), mchirps.max()
-        #eta_min, eta_max = etas.min(), 0.25
-        # we'll bump up/down the chirp mass bounds slightly
+        # we'll bump up/down the mass bounds slightly
         bounds = {'mass1': (0.8*m1s_min, 1.2*m1s_max),
             'mass2': (0.8*m2s_min, 1.2*m2s_max)}
-        #bounds = {'mchirp': (0.8*mchirp_min, 1.2*mchirp_max),
-        #          'eta': (0., 0.25)
-        #          }
         self.set_bounds(**bounds)
         # calculate the norm
-        #norm = self._kernel.integrate_box(
-        #    (self.bounds['mchirp'][0], self.bounds['eta'][0]),
-        #    (self.bounds['mchirp'][1], self.bounds['eta'][1]))
         norm = self._kernel.integrate_box(
             (self.bounds['mass1'][0], self.bounds['mass2'][0]),
             (self.bounds['mass1'][1], self.bounds['mass2'][1]))
         self._norm = norm
 
-    #def _pdf(self, mchirp, eta):
-    #    return self._norm*self._kernel.evaluate((mchirp, eta))[0]
     def _pdf(self, mass1, mass2):
         return self._norm*self._kernel.evaluate((mass1, mass2))[0]
 
@@ -634,10 +622,6 @@ class DominikEtAl2012(CBCDistribution):
 
         return (1.+get_redshift(result.distance))**2. * \
             self._pdf(source_mass1, source_mass2)
-        #source_mchirp = get_source_mass(result.mchirp,
-        #    get_proper_distance(result.distance))
-        #return (1.+get_redshift(result.distance))**2. * \
-        #    self._pdf(source_mchirp, result.eta)
 
 
 # helper functions
@@ -670,13 +654,30 @@ def _get_data_and_kernel(filename):
     """
     m1s, m2s = _load_dominik2012_model(filename)
     dataset = numpy.vstack((m1s, m2s))
-    #Ms = m1s + m2s
-    #etas = m1s*m2s/Ms**2.
-    #mchirps = etas**(3./5)*Ms
-    #dataset = numpy.vstack((mchirps, etas))
     kernel = stats.gaussian_kde(dataset)
-    return kernel, m1s, m2s#mchirps, etas
+    return kernel, m1s, m2s
 
+
+
+# The known distributions
+distributions = {
+    UniformComponent.name: UniformComponent,
+    LogComponent.name: LogComponent,
+    UniformMq.name: UniformMq,
+    DominikEtAl2012.name: DominikEtAl2012
+    }
+
+# Mapping from names used by inspinj to distributions defined here
+inspinj_map = {
+    UniformComponent.inspinj_name: UniformComponent,
+    LogComponent.inspinj_name: LogComponent
+    }
+
+#
+#
+#   Red shift helper functions
+#
+#
 # default hubble constant comes from arXiv:1212.5225
 default_H0 = 69.32 # km/s/Mpc
 
@@ -704,94 +705,12 @@ def get_proper_distance(distance, hubble_const = None):
     return distance / (1 + get_redshift(distance, hubble_const))
 
 
-class SubmodelAOCEFit(CBCDistribution):
-    """
-    A distribution based on a fit to the Submodel A with optimisitic common
-    envelope evolution in Dominik et al. 2012, 2014. The distribution in
-    chirp mass is given by:
-        p(M) = A * M**alpha * exp(-beta * M),
-    where:
-        A = 6.58166e-6
-        alpha = 5.25954242624
-        beta = 0.343162134711
-    In mass ratio (here, defined on (0, 1]):
-       p(q) = a * exp(b*q),
-    where:
-       a = 4.4748490112078417e-5
-       b = 12.5436728009
-    """
-    name = 'submodel_a_ocefit'
-    inspinj_name = None
-    description = 'Fitted Submodel A with optimisitc common envelope evolution'
-    _parameters = ['mchirp', 'inv_q']
-    _optional_parameters = []
-
-    def __init__(self):
-        bounds = {'mchirp': (0., numpy.inf),
-            'inv_q': (0., 1.)}
-        self.set_bounds(**bounds)
-        # mchirp parameters
-        self.A = 6.58166e-6
-        self.alpha = 5.25954242624
-        self.beta = 0.343162134711
-        # q parameters
-        self.a = 4.4748490112078417e-5
-        self.b = 12.5436728009
-        # set the norm
-        self.set_norm()
-
-    def set_norm(self):
-        """
-        Calculates the norm of self; the result is
-        stored to self._norm.
-        """
-        self._norm = self.A * self.a
-        return self._norm
-
-    def _pdf(self, mchirp, inv_q):
-        return self.norm * mchirp**self.alpha * numpy.exp(-self.beta * mchirp)\
-            * numpy.exp(self.b * inv_q)
-
-    def pdf_from_result(self, result):
-        """"
-        Returns the value of this distribution's probability density function
-        evaluated at the given result's parameters. Overrides parent's class
-        so that it uses mass1, mass2 from the result.
-
-        Parameters
-        ----------
-        result: plot.Result instance
-            An instance of a pycbc.plot.Result populated with the needed
-            parameters.
-
-        Returns
-        -------
-        pdf: float
-            Value of the pdf at the given parameters.
-        """
-        return self._pdf(result.mchirp, 1./result.q)
-
-        
-
-# The known distributions
-distributions = {
-    UniformComponent.name: UniformComponent,
-    LogComponent.name: LogComponent,
-    UniformMq.name: UniformMq,
-    SubmodelAOCEFit.name: SubmodelAOCEFit,
-    DominikEtAl2012.name: DominikEtAl2012
-    }
-
-# Mapping from names used by inspinj to distributions defined here
-inspinj_map = {
-    UniformComponent.inspinj_name: UniformComponent,
-    LogComponent.inspinj_name: LogComponent
-    }
-
 #
 #
 #   Utilities for retrieving a distribution from files
 #
+#
+
 def get_mdistr_from_database(connection, process_id):
     """
     Gets the mass distribution of the given process_id.
@@ -922,8 +841,8 @@ def logComponent_to_MchirpEta(result):
 Jacobians = {
     ("log_component", "uniform_component"): logComponent_to_uniformComponent,
     ("uniform_component", "uniform_Mq"): uniformComponent_to_uniformMq,
-    ("uniform_component", "dominik_etal_2012"): identity,#uniformComponent_to_MchirpEta,
-    ("log_component", "dominik_etal_2012"): logComponent_to_uniformComponent,#MchirpEta,
+    ("uniform_component", "dominik_etal_2012"): identity,
+    ("log_component", "dominik_etal_2012"): logComponent_to_uniformComponent,
     # identities
     ("log_component", "log_component"): identity,
     ("uniform_component", "uniform_component"): identity,
