@@ -273,10 +273,13 @@ if test_results_type == "overlaps":
         load_inj_distribution=True, verbose=True)
 elif test_results_type == "pycbc_sqlite":
     test_results, _ = plot.pycbc_sqlite.get_injection_results(filenames,
-        opts.map_label)
+        opts.map_label,
+        load_inj_distribution=opts.astrophysical_prior is not None,
+        verbose=True)
 elif test_results_type == "gstlal":
     test_results, _ = plot.gstlal.get_injection_results(filenames,
-        load_inj_distribution=False)
+        load_inj_distribution=opts.astrophysical_prior is not None,
+        verbose=True)
 elif test_results_type == "hdfcoinc":
     injfind_files = plot.hdfcoinc.get_hdfinjfind_files_from_filelist(
         filenames)
@@ -285,7 +288,8 @@ elif test_results_type == "hdfcoinc":
     statmap_files = plot.hdfcoinc.get_fulldata_statmap_file_from_filelist(
         filenames)
     test_results, _ = plot.hdfcoinc.get_injection_results(injfind_files,
-        sim_inspiral_files=injection_files, load_inj_distribution=False,
+        sim_inspiral_files=injection_files,
+        load_inj_distribution=opts.astrophysical_prior is not None,
         verbose=True)
 
 if opts.include_livetime:
@@ -324,10 +328,13 @@ if opts.reference_stat != 'optimal':
             load_inj_distribution=True, verbose=True)
     elif ref_results_type == "pycbc_sqlite":
         ref_results, _ = plot.pycbc_sqlite.get_injection_results(filenames,
-            opts.map_label)
+            opts.map_label,
+            load_inj_distribution=opts.astrophysical_prior is not None,
+            verbose=True)
     elif ref_results_type == "gstlal":
         ref_results, _ = plot.gstlal.get_injection_results(filenames,
-            load_inj_distribution=False)
+            load_inj_distribution=opts.astrophysical_prior is not None,
+            verbose=True)
     elif ref_results_type == "hdfcoinc":
         injfind_files = plot.hdfcoinc.get_hdfinjfind_files_from_filelist(
             filenames)
@@ -336,7 +343,8 @@ if opts.reference_stat != 'optimal':
         statmap_files = plot.hdfcoinc.get_fulldata_statmap_file_from_filelist(
             filenames)
         ref_results, _ = plot.hdfcoinc.get_injection_results(injfind_files,
-            sim_inspiral_files=injection_files, load_inj_distribution=False,
+            sim_inspiral_files=injection_files,
+            load_inj_distribution=opts.astrophysical_prior is not None,
             verbose=True)
     if opts.include_livetime:
         if ref_results_type == "pycbc_sqlite":

@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 
+import sys
 import sqlite3
 import numpy
 import itertools
@@ -186,7 +187,7 @@ def get_most_significant_result(found_coincs,
     else:
         keep_idx = numpy.where(primaries == primaries.max())[0]
     if len(keep_idx) > 1:
-        secondaries = numpy.array([data_utils.get_arg(this_group[jj],
+        secondaries = numpy.array([data_utils.get_arg(found_coincs[jj],
             secondary_arg) for jj in keep_idx])
         # note: this will just keep the first event if the secondaries
         # are equal
@@ -286,8 +287,8 @@ def get_injection_results(filenames,
                     found_coinc = get_most_significant_result(found_coincs,
                         primary_arg=cull_primary_arg,
                         primary_rank_by=cull_primary_rank_by,
-                        secondary_arg=cull_secondary_arg,
-                        secondary_rank_by=cull_secondary_rank_by)
+                        secondary_arg='snr',
+                        secondary_rank_by='max')
                     thisRes.ranking_stat = found_coinc.snr
                     # gstlal stores its FARs in Hz, so convert to years
                     thisRes.false_alarm_rate = found_coinc.combined_far * \

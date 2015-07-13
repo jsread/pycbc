@@ -130,7 +130,9 @@ for ii,cache_file_arg in enumerate(cache_files):
         results = [x for x in results if x.snr != 0. or x.snr is None]
     elif results_type == "pycbc_sqlite":
         results, _ = plot.pycbc_sqlite.get_injection_results(filenames,
-            opts.map_label)
+            opts.map_label,
+            load_inj_distribution=opts.astrophysical_prior is not None,
+            verbose=True)
     elif results_type == "hdfcoinc":
         injfind_files = plot.hdfcoinc.get_hdfinjfind_files_from_filelist(
             filenames)
@@ -139,11 +141,13 @@ for ii,cache_file_arg in enumerate(cache_files):
         statmap_files = plot.hdfcoinc.get_fulldata_statmap_file_from_filelist(
             filenames)
         results, _ = plot.hdfcoinc.get_injection_results(injfind_files,
-            sim_inspiral_files=injection_files, load_inj_distribution=False,
+            sim_inspiral_files=injection_files,
+            load_inj_distribution=opts.astrophysical_prior is not None,
             verbose=True)
     elif results_type == "gstlal":
         results, _ = plot.gstlal.get_injection_results(filenames,
-            load_inj_distribution=False)
+            load_inj_distribution=opts.astrophysical_prior is not None,
+            verbose=True)
     if apply_cut:
         print "  applying cuts"
         print "  number of results before: %i" %(len(results))

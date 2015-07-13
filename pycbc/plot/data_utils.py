@@ -217,6 +217,7 @@ class Result(object):
         else:
             self.injection = injection
         self._psuedoattr_class = None
+        self.ranking_stat = None
         self.snr = None
         self.chisq = None
         self.chisq_dof = None
