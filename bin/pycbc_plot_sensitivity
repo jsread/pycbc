@@ -141,6 +141,9 @@ for ii,cache_file_arg in enumerate(cache_files):
         results, _ = plot.hdfcoinc.get_injection_results(injfind_files,
             sim_inspiral_files=injection_files, load_inj_distribution=False,
             verbose=True)
+    elif results_type == "gstlal":
+        results, _ = plot.gstlal.get_injection_results(filenames,
+            load_inj_distribution=False)
     if apply_cut:
         print "  applying cuts"
         print "  number of results before: %i" %(len(results))
@@ -181,6 +184,9 @@ for ii,cache_file_arg in enumerate(cache_files):
                 raise ValueError("file %s has multiple veto categorgies, but " +\
                     "I can only handle one veto category in each file; sorry!")
             livetime = sum([dur for _,dur in livetime.values()])
+        elif results_type == "gstlal":
+            livetime = plot.gstlal.get_livetime(filenames)
+            livetime = sum([dur for dur in livetime.values()])
         elif results_type == "hdfcoinc":
             livetime = plot.hdfcoinc.get_livetime(statmap_files) 
         print "livetime (s): ", livetime

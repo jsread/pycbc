@@ -376,6 +376,7 @@ setup (
                'pycbc.plot.overlaps',
                'pycbc.plot.pycbc_sqlite',
                'pycbc.plot.hdfcoinc',
+               'pycbc.plot.gstlal',
                'pycbc.results',
                'pycbc.io',
                ],

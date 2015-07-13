@@ -274,6 +274,9 @@ if test_results_type == "overlaps":
 elif test_results_type == "pycbc_sqlite":
     test_results, _ = plot.pycbc_sqlite.get_injection_results(filenames,
         opts.map_label)
+elif test_results_type == "gstlal":
+    test_results, _ = plot.gstlal.get_injection_results(filenames,
+        load_inj_distribution=False)
 elif test_results_type == "hdfcoinc":
     injfind_files = plot.hdfcoinc.get_hdfinjfind_files_from_filelist(
         filenames)
@@ -300,6 +303,9 @@ if opts.include_livetime:
             raise ValueError("file %s has multiple veto categorgies, but " +\
                 "I can only handle one veto category in each file; sorry!")
         test_livetime = sum([dur for _,dur in livetime.values()])
+    elif test_results_type == "gstlal":
+        test_livetime = plot.gstlal.get_livetime(filenames)
+        test_livetime = sum([dur for dur in test_livetime.values()])
     elif test_results_type == "hdfcoinc":
         test_livetime = plot.hdfcoinc.get_livetime(statmap_files) 
     print "test livetime (s): ", test_livetime
@@ -319,6 +325,9 @@ if opts.reference_stat != 'optimal':
     elif ref_results_type == "pycbc_sqlite":
         ref_results, _ = plot.pycbc_sqlite.get_injection_results(filenames,
             opts.map_label)
+    elif ref_results_type == "gstlal":
+        ref_results, _ = plot.gstlal.get_injection_results(filenames,
+            load_inj_distribution=False)
     elif ref_results_type == "hdfcoinc":
         injfind_files = plot.hdfcoinc.get_hdfinjfind_files_from_filelist(
             filenames)
@@ -344,6 +353,9 @@ if opts.reference_stat != 'optimal':
                 raise ValueError("file %s has multiple veto categorgies, but " +\
                     "I can only handle one veto category in each file; sorry!")
             ref_livetime = sum([dur for _,dur in livetime.values()])
+        elif ref_results_type == "gstlal":
+            ref_livetime = plot.gstlal.get_livetime(filenames)
+            ref_livetime = sum([dur for dur in ref_livetime.values()])
         elif ref_results_type == "hdfcoinc":
             ref_livetime = plot.hdfcoinc.get_livetime(statmap_files) 
         print "ref. livetime (s): ", ref_livetime

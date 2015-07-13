@@ -305,6 +305,10 @@ class Result(object):
         return self.injection
 
 
+#
+# Slicing utilities
+#
+
 # FIXME: dataUtils in pylal should be moved to pycbc, and the get_val in there
 # used instead
 def get_arg(row, arg):
@@ -375,4 +379,62 @@ def parse_results_cache(cache_file):
             raise ValueError("file %s not found" %(thisfile))
     f.close()
     return filenames
+
+
+def cull_injection_results(results, primary_arg='false_alarm_rate',
+        primary_rank_by='max', secondary_arg='new_snr',
+        secondary_rank_by='min'):
+    """
+    Given a list of injection results in which the injections are mapped to
+    multiple singles, picks the more significant one based on the primary_arg.
+    If the two events have the same value in the primary arg, the secondary
+    arg is used.
+    """
+    # get the correct operator to use
+    if not (primary_rank_by == 'max' or primary_rank_by == 'min'):
+        raise ValueError("unrecognized primary_rank_by %s; " %(
+            primary_rank_by) + 'options are "max" or "min"')
+    if not (secondary_rank_by == 'max' or secondary_rank_by == 'min'):
+        raise ValueError("unrecognized secondary_rank_by %s; " %(
+            secondary_rank_by) + 'options are "max" or "min"')
+    # find the repeated entries
+    sorted_results = sorted(results,
+        key=lambda x: int(x.simulation_id.split(':')[-1]))
+    id_map = {}
+    duplicates = {}
+    this_count = 1
+    for ii,this_result in enumerate(sorted_results):
+        if ii+1 < len(sorted_results) and \
+                sorted_results[ii+1].simulation_id == \
+                this_result.simulation_id:
+            this_count += 1
+        elif this_count > 1:
+            # pick out the loudest out of the repeated values
+            this_group = sorted_results[ii-(this_count-1):ii+1]
+            primaries = numpy.array([data_utils.get_arg(x, primary_arg) \
+                for x in this_group])
+            if primary_rank_by == 'min':
+                keep_idx = numpy.where(primaries == primaries.min())[0]
+            else:
+                keep_idx = numpy.where(primaries == primaries.max())[0]
+            if len(keep_idx) > 1:
+                secondaries = numpy.array([data_utils.get_arg(this_group[jj],
+                    secondary_arg) for jj in keep_idx])
+                # note: this will just keep the first event if the secondaries
+                # are equal
+                if secondary_rank_by == 'min':
+                    secondary_idx = secondaries.argmin()
+                else:
+                    secondary_idx = secondaries.argmax()
+                keep_idx = keep_idx[secondary_idx]
+            else:
+                keep_idx = keep_idx[0]
+            # set this_result to the desired one; also set this_count = 0 for
+            # the next group
+            this_result = this_group[keep_idx]
+            this_count = 1
+        if this_count == 1:
+            id_map[this_result.database, this_result.simulation_id] = \
+                this_result
+    return id_map.values(), id_map
 
