@@ -93,7 +93,7 @@ class InjectionSet(object):
                 setattr( swigrow, simattr, str(getattr(glue_row, simattr)) )
             else:
                 setattr( swigrow, simattr, getattr(glue_row, simattr) )
-        swigrow.geocent_end_time.gpsNanoSeconds = glue_row.geocent_end_time_ns
+        swigrow.geocent_end_time = glue_row.geocent_end_time_ns
         return swigrow
 
     def apply(self, strain, detector_name, f_lower=None, distance_scale=1,
@@ -163,8 +163,8 @@ class InjectionSet(object):
                                 epoch=Hc.epoch)
                 hp /= distance_scale
                 hc /= distance_scale
-                end_time = float(hp.get_end_time())
-                start_time = float(hp.get_start_time())
+                end_time = float(hp.end_time)
+                start_time = float(hp.start_time)
                 if end_time < t0 or start_time > t1:
                     continue
             else:
