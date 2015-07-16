@@ -35,7 +35,7 @@ There are four sections that must be present [inspinj], [executables], [workflow
     The number of injections can be set by using the gps start and end time
     options along with the time step.
     Note, however, that the waveform name is required but does not 
-    determine the actual approximants that will be compared. That is set in the [banksim] 
+    determine the actual approximants that will be compared. That is set in the [faithsim] 
     section. 
 
  #. executables
